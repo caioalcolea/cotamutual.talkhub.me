@@ -12,7 +12,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 
 import { QuoteQueue } from "../src/queue/quote-queue.js";
 import { QuoteLogRepository } from "../src/state/quote-log.js";
-import { calculateAssetPurchase } from "../src/core/pricing.js";
+import { calculateAssetPurchase, calculateReceiveSide } from "../src/core/pricing.js";
 import type { QuoteEngine, QuoteContext } from "../src/core/engine.js";
 import type { OutboundSender } from "../src/channels/outbound.js";
 
@@ -62,9 +62,12 @@ test("fila concluida: /COMPRAR ainda recupera a ultima cotacao (TTL)", async () 
   assert.equal(queue.snapshot().active.length, 0);
   assert.ok(sent.some((t) => t.startsWith("📊")));
 
-  const summary = queue.interruptForBuy("whatsapp", "G1");
-  assert.ok(summary, "resumo da ultima cotacao deveria sobreviver ao fim da fila");
-  assert.match(summary as string, /10\.000 USDT = R\$/);
+  const last = queue.interruptForBuy("whatsapp", "G1");
+  assert.ok(last, "ultima cotacao deveria sobreviver ao fim da fila");
+  assert.match(last.summary, /10\.000 USDT = R\$/);
+  assert.equal(last.operation, "buy");
+  assert.equal(last.destinationAsset, "USDT");
+  assert.equal(last.result.kind, "asset-purchase");
 });
 
 test("fila ativa: /COMPRAR interrompe e usa a cotacao da propria fila", async () => {
@@ -78,12 +81,64 @@ test("fila ativa: /COMPRAR interrompe e usa a cotacao da propria fila", async ()
     await sleep(50);
   }
 
-  const summary = queue.interruptForBuy("whatsapp", "G1");
-  assert.ok(summary);
+  const last = queue.interruptForBuy("whatsapp", "G1");
+  assert.ok(last);
   assert.equal(queue.snapshot().active.length, 0, "fila deve ser interrompida");
 });
 
 test("grupo sem cotacao alguma: /COMPRAR sem resumo", () => {
   const { queue } = buildQueue(1);
   assert.equal(queue.interruptForBuy("whatsapp", "G-NUNCA-COTOU"), null);
+});
+
+// ---------------------------------------------------------------------------
+// Registro de operacao do /COMPRAR (formato do painel da Mutual)
+// ---------------------------------------------------------------------------
+
+import { formatOperationRecord } from "../src/core/format.js";
+
+test("formatOperationRecord: compra USDT no formato do template", () => {
+  const result = calculateAssetPurchase({
+    quantity: 1000,
+    baseUnitPrice: 5.1631,
+    fee: { id: "f", feeFixed: 0.0001, feePercentage: 0.0001 },
+  });
+  const record = formatOperationRecord({
+    groupId: "120363406233321709@g.us",
+    transactionId: "0ae8fbb4-0ecb-4ba1-9ea4-10f46ed9a353",
+    date: new Date("2026-07-11T20:55:00Z"),
+    operation: "buy",
+    sourceAsset: "BRL",
+    destinationAsset: "USDT",
+    result,
+  });
+
+  assert.match(record, /ID do grupo:\n120363406233321709@g\.us/);
+  assert.match(record, /ID da Transação:\n0ae8fbb4-0ecb-4ba1-9ea4-10f46ed9a353/);
+  assert.match(record, /📅 Data da Operação:\n11\/07\/2026 17:55/); // America/Sao_Paulo
+  assert.match(record, /Tipo de Operação:\nCOMPRA USDT/);
+  assert.match(record, /Cotação:\n1 USDT = R\$ 5,16362/);
+  assert.match(record, /💵 Montante em USDT:\nTotal: 1\.000 USDT\nPendente: 1\.000 USDT/);
+  // Intl pt-BR usa espaco nao separavel (U+00A0) apos "R$"
+  assert.match(record, /💼 Montante em BRL:\nTotal: R\$[\s ]5\.163,62\nPendente: R\$[\s ]5\.163,62/);
+});
+
+test("formatOperationRecord: venda BTC mostra montante liquido em BRL", () => {
+  const result = calculateReceiveSide({
+    quantity: 1,
+    baseUnitPrice: 600_000,
+    fee: { id: "f", feeFixed: 10, feePercentage: 0.01 },
+  });
+  const record = formatOperationRecord({
+    groupId: "G",
+    transactionId: "tx",
+    date: new Date("2026-07-11T20:55:00Z"),
+    operation: "sell",
+    sourceAsset: "BTC",
+    destinationAsset: "BRL",
+    result,
+  });
+  assert.match(record, /Tipo de Operação:\nVENDA BTC/);
+  assert.match(record, /💵 Montante em BTC:\nTotal: 1 BTC/);
+  assert.match(record, /💼 Montante em BRL:\nTotal: R\$[\s ]593\.990,00/);
 });

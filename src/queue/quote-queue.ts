@@ -50,11 +50,21 @@ function sessionKey(channel: string, groupId: string): string {
 /** Por quanto tempo a ultima cotacao do grupo vale como referencia no /COMPRAR. */
 const LAST_QUOTE_TTL_MS = 15 * 60 * 1000;
 
+/** Ultima cotacao completa de um grupo (base do registro de operacao do /COMPRAR). */
+export interface LastQuoteInfo {
+  summary: string;
+  operation: string;
+  sourceAsset: string;
+  destinationAsset: string;
+  result: import("../core/pricing.js").QuoteCalculation;
+  at: number;
+}
+
 export class QuoteQueue {
   private readonly sessions = new Map<string, QueueSession>();
   private readonly history: QueueSessionSnapshot[] = [];
   /** Ultima cotacao enviada por grupo — sobrevive ao fim da fila (TTL 15min). */
-  private readonly lastQuotes = new Map<string, { summary: string; at: number }>();
+  private readonly lastQuotes = new Map<string, LastQuoteInfo>();
 
   constructor(
     private readonly engine: QuoteEngine,
@@ -88,19 +98,16 @@ export class QuoteQueue {
 
   /**
    * Interrompe a fila do grupo por um comando de compra.
-   * Retorna o resumo da ultima cotacao enviada — da fila ativa ou, se a fila
-   * ja terminou, da ultima cotacao recente do grupo (TTL de 15 minutos).
+   * Retorna a ultima cotacao completa do grupo — cada tick atualiza o registro,
+   * entao vale tanto para fila ativa quanto para fila ja concluida (TTL 15min).
    */
-  interruptForBuy(channel: string, groupId: string): string | null {
+  interruptForBuy(channel: string, groupId: string): LastQuoteInfo | null {
     const key = sessionKey(channel, groupId);
-    const session = this.sessions.get(key);
-    const active = session?.lastQuoteSummary ?? null;
     this.cancel(key, "interrupted");
-    if (active) return active;
 
     const recent = this.lastQuotes.get(key);
     if (recent && Date.now() - recent.at < LAST_QUOTE_TTL_MS) {
-      return recent.summary;
+      return recent;
     }
     return null;
   }
@@ -183,7 +190,14 @@ export class QuoteQueue {
           destinationAsset: ctx.destinationAsset,
           result: tick.result,
         });
-        this.lastQuotes.set(key, { summary: session.lastQuoteSummary, at: Date.now() });
+        this.lastQuotes.set(key, {
+          summary: session.lastQuoteSummary,
+          operation: ctx.operation,
+          sourceAsset: ctx.sourceAsset,
+          destinationAsset: ctx.destinationAsset,
+          result: tick.result,
+          at: Date.now(),
+        });
 
         await this.outbound.send({ channel: ctx.channel, groupId: ctx.groupId, text: message });
 

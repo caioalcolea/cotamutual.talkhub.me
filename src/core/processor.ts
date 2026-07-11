@@ -10,6 +10,7 @@
  * manualmente por um operador da Mutual.
  */
 
+import { randomUUID } from "node:crypto";
 import type { AppConfig } from "../config.js";
 import type { MerchantCache } from "../cache/caches.js";
 import type { OutboundSender } from "../channels/outbound.js";
@@ -19,7 +20,7 @@ import type { QuoteQueue } from "../queue/quote-queue.js";
 import { QuoteEngine, QuoteUserError } from "./engine.js";
 import type { GroupMatcher } from "./group-matcher.js";
 import { parseCommand } from "./parser.js";
-import { MESSAGES } from "./format.js";
+import { formatOperationRecord, MESSAGES } from "./format.js";
 import { describeError } from "../util/errors.js";
 import { logger } from "../logger.js";
 
@@ -100,36 +101,49 @@ export class MessageProcessor {
       }
 
       // A compra SEMPRE interrompe a fila de cotacoes em andamento.
+      // A ultima cotacao (fila ativa ou recem-concluida) vira o registro da operacao.
       const lastQuote = this.queue.interruptForBuy(channel, groupId);
+      const transactionId = randomUUID();
 
-      if (!toggles.buy) {
-        // Execucao automatica inativa (padrao): operacao manual pela Mutual.
-        await reply(MESSAGES.buyManual(lastQuote));
-        this.quoteLog.create({
-          type: "buy-manual",
-          channel,
+      // Compra ativada no painel + ORDERS_ENABLED=false: NUNCA chamar
+      // POST /api/v2/crypto/orders (secao 16/19 do descritivo) — mesma
+      // conclusao manual, com o aviso de execucao automatica indisponivel.
+      const closing = toggles.buy ? MESSAGES.ordersNotEnabledClosing : MESSAGES.manualClosing;
+
+      let text: string;
+      if (lastQuote) {
+        const record = formatOperationRecord({
           groupId,
-          merchantId: merchant.id,
-          merchantName: merchant.legalName ?? null,
-          detail: lastQuote,
-          command: parsed.raw,
+          transactionId,
+          date: new Date(),
+          operation: lastQuote.operation,
+          sourceAsset: lastQuote.sourceAsset,
+          destinationAsset: lastQuote.destinationAsset,
+          result: lastQuote.result,
         });
-        return { handled: true, action: "buy-manual" };
+        text = MESSAGES.buyWithRecord(record, closing);
+      } else {
+        // Sem cotacao recente no grupo: confirma o recebimento sem montantes.
+        text = toggles.buy ? `✅ Pedido recebido!\n${closing}` : MESSAGES.buyManual(null);
       }
 
-      // Compra ativada no painel, mas nesta fase ORDERS_ENABLED=false:
-      // NUNCA chamar POST /api/v2/crypto/orders (secao 16/19 do descritivo).
-      await reply(MESSAGES.ordersNotEnabled(lastQuote));
+      await reply(text);
       this.quoteLog.create({
-        type: "buy-interrupt",
+        type: toggles.buy ? "buy-interrupt" : "buy-manual",
         channel,
         groupId,
         merchantId: merchant.id,
         merchantName: merchant.legalName ?? null,
-        detail: lastQuote,
+        transactionId,
+        operation: lastQuote?.operation ?? null,
+        sourceAsset: lastQuote?.sourceAsset ?? null,
+        destinationAsset: lastQuote?.destinationAsset ?? null,
+        result: lastQuote?.result ?? null,
+        detail: lastQuote?.summary ?? null,
+        messageSent: text,
         command: parsed.raw,
       });
-      return { handled: true, action: "buy-orders-disabled" };
+      return { handled: true, action: toggles.buy ? "buy-orders-disabled" : "buy-manual" };
     }
 
     // ------------------------------ Cotacao ---------------------------------

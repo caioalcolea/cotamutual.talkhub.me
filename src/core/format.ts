@@ -109,6 +109,106 @@ export function formatQuoteSummary(ctx: Omit<QuoteMessageContext, "sequence" | "
 }
 
 // ---------------------------------------------------------------------------
+// Registro de operacao (emitido pelo /COMPRAR na fase de operacao manual)
+// ---------------------------------------------------------------------------
+
+export interface OperationRecordParams {
+  groupId: string;
+  transactionId: string;
+  date: Date;
+  operation: string; // buy | sell | conversion
+  sourceAsset: string;
+  destinationAsset: string;
+  result: QuoteCalculation;
+}
+
+function operationTypeLabel(operation: string, sourceAsset: string, destinationAsset: string): string {
+  if (operation === "buy") return `COMPRA ${destinationAsset}`;
+  if (operation === "sell") return `VENDA ${sourceAsset}`;
+  return `CONVERSÃO ${sourceAsset} → ${destinationAsset}`;
+}
+
+/**
+ * Registro completo da operacao no formato do painel da Mutual:
+ * ID do grupo, ID da transacao, data, tipo, cotacao e montantes Total/Pendente.
+ * "Pendente" = valor integral, pois a conclusao e manual nesta fase.
+ */
+export function formatOperationRecord(params: OperationRecordParams): string {
+  const { groupId, transactionId, date, operation, sourceAsset, destinationAsset, result } = params;
+
+  const dateStr = new Intl.DateTimeFormat("pt-BR", {
+    timeZone: "America/Sao_Paulo",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  })
+    .format(date)
+    .replace(",", "");
+
+  const lines: string[] = [
+    "ID do grupo:",
+    groupId,
+    "",
+    "ID da Transação:",
+    transactionId,
+    "",
+    "📅 Data da Operação:",
+    dateStr,
+    "",
+    "Tipo de Operação:",
+    operationTypeLabel(operation, sourceAsset, destinationAsset),
+    "",
+  ];
+
+  if (result.kind === "asset-purchase" || result.kind === "brl-budget") {
+    const qty = result.quantity;
+    const brl = result.kind === "asset-purchase" ? result.finalTotal : result.amountBRL;
+    lines.push(
+      "Cotação:",
+      `1 ${destinationAsset} = ${formatUnitBRL(result.finalUnitPrice)}`,
+      "",
+      `💵 Montante em ${destinationAsset}:`,
+      `Total: ${formatQty(qty)} ${destinationAsset}`,
+      `Pendente: ${formatQty(qty)} ${destinationAsset}`,
+      "",
+      "💼 Montante em BRL:",
+      `Total: ${formatBRL(brl)}`,
+      `Pendente: ${formatBRL(brl)}`,
+    );
+  } else if (destinationAsset === "BRL") {
+    lines.push(
+      "Cotação:",
+      `1 ${sourceAsset} = ${formatUnitBRL(result.finalUnitPrice)}`,
+      "",
+      `💵 Montante em ${sourceAsset}:`,
+      `Total: ${formatQty(result.quantity)} ${sourceAsset}`,
+      `Pendente: ${formatQty(result.quantity)} ${sourceAsset}`,
+      "",
+      "💼 Montante em BRL:",
+      `Total: ${formatBRL(result.netAmount)}`,
+      `Pendente: ${formatBRL(result.netAmount)}`,
+    );
+  } else {
+    lines.push(
+      "Cotação:",
+      `1 ${sourceAsset} = ${formatQty(result.finalUnitPrice)} ${destinationAsset}`,
+      "",
+      `💵 Montante em ${sourceAsset}:`,
+      `Total: ${formatQty(result.quantity)} ${sourceAsset}`,
+      `Pendente: ${formatQty(result.quantity)} ${sourceAsset}`,
+      "",
+      `💼 Montante em ${destinationAsset}:`,
+      `Total: ${formatQty(result.netAmount)} ${destinationAsset}`,
+      `Pendente: ${formatQty(result.netAmount)} ${destinationAsset}`,
+    );
+  }
+
+  return lines.join("\n");
+}
+
+// ---------------------------------------------------------------------------
 // Textos padrao
 // ---------------------------------------------------------------------------
 
@@ -129,22 +229,24 @@ export const MESSAGES = {
   quotesManual:
     "📩 Solicitação recebida! Esta cotação será conduzida manualmente por um operador da Mutual. Aguarde o retorno aqui no grupo.",
 
-  // Compra com execucao automatica inativa (padrao): NUNCA citar bot/estado.
+  // Encerramento padrao da compra manual: NUNCA citar bot/estado.
+  manualClosing:
+    "A operação será concluída manualmente por um operador da Mutual. Aguarde a confirmação aqui no grupo. 🤝",
+
+  // Compra ativada no painel, mas fase de ordens ainda desabilitada (secao 16).
+  ordersNotEnabledClosing:
+    "ℹ️ A execução automática de ordens ainda não está habilitada.\nA operação será concluída manualmente por um operador da Mutual. Aguarde a confirmação aqui no grupo.",
+
+  // Compra com registro completo da operacao (quando ha cotacao recente).
+  buyWithRecord: (record: string, closing: string): string =>
+    `✅ Pedido recebido!\n\n${record}\n\n${closing}`,
+
+  // Compra sem cotacao recente no grupo: pede uma cotacao antes.
   buyManual: (lastQuote: string | null): string =>
     [
       "✅ Pedido recebido!",
       lastQuote ? `🔒 Última cotação registrada: ${lastQuote}` : null,
       "A operação será concluída manualmente por um operador da Mutual. Aguarde a confirmação aqui no grupo. 🤝",
-    ]
-      .filter(Boolean)
-      .join("\n"),
-
-  // Compra ativada no painel, mas fase de ordens ainda desabilitada (secao 16).
-  ordersNotEnabled: (lastQuote: string | null): string =>
-    [
-      "ℹ️ A execução automática de ordens ainda não está habilitada.",
-      lastQuote ? `🔒 Última cotação registrada: ${lastQuote}` : null,
-      "A operação será concluída manualmente por um operador da Mutual. Aguarde a confirmação aqui no grupo.",
     ]
       .filter(Boolean)
       .join("\n"),

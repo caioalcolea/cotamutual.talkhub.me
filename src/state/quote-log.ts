@@ -24,6 +24,8 @@ export interface QuoteLogEntry {
   groupId: string;
   merchantId?: string | null;
   merchantName?: string | null;
+  /** ID da transacao gerado no /COMPRAR (registro da operacao manual). */
+  transactionId?: string | null;
   operation?: string | null;
   sourceAsset?: string | null;
   destinationAsset?: string | null;
