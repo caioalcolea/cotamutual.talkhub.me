@@ -51,6 +51,7 @@ async function main(): Promise<void> {
     feeCache,
     config.quoteReferenceBrlAmount,
     groupMatcher,
+    config.quoteTickerFallback,
   );
   const queue = new QuoteQueue(
     engine,

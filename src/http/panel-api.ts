@@ -237,13 +237,16 @@ export function createPanelRouter(deps: {
         asset,
         config.quoteReferenceBrlAmount,
         side,
+        config.quoteTickerFallback,
       );
       res.json({
         ok: true,
         asset,
         env,
         side,
+        // Preco de mercado SEM fee — a fee do merchant e somada na cotacao do grupo.
         unitPriceBRL: result.unitPriceBRL,
+        priceSource: result.source,
         elapsedMs: Date.now() - startedAt,
         rawTicker: result.rawTicker,
       });

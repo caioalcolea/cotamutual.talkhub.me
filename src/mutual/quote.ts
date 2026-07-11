@@ -13,6 +13,7 @@
  *       fallback: "last", depois o outro lado.
  */
 
+import type { AxiosInstance } from "axios";
 import type { MutualClients } from "./client.js";
 import type { MutualQuoteData, MutualQuoteResponse } from "../types.js";
 import { ASSET_NETWORKS } from "../constants.js";
@@ -29,10 +30,10 @@ export interface TickerRequest {
 }
 
 export async function fetchMutualQuote(
-  clients: MutualClients,
+  client: AxiosInstance,
   input: TickerRequest,
 ): Promise<MutualQuoteData> {
-  const response = await clients.crypto.get<MutualQuoteResponse>("/api/v2/crypto/quote", {
+  const response = await client.get<MutualQuoteResponse>("/api/v2/crypto/quote", {
     params: {
       symbol: input.symbol,
       amount: input.amount,
@@ -79,15 +80,32 @@ export function deriveUnitPrice(data: MutualQuoteData, side: QuoteSide): number 
   return positiveNumber(data.price);
 }
 
+/** true quando a resposta traz preco de ticker (buy/sell/last). */
+export function hasTickerPrice(data: MutualQuoteData): boolean {
+  return [data.buy, data.sell, data.last].some((v) => positiveNumber(v) !== null);
+}
+
+/** De onde saiu o preco-base usado. */
+export type PriceSource = "ticker" | "ticker-fallback" | "quote";
+
 export interface UnitPriceResult {
-  /** Preco de 1 unidade do ativo, em BRL. */
+  /** Preco de 1 unidade do ativo, em BRL — SEM fee (a fee do merchant e aplicada por cima). */
   unitPriceBRL: number;
   rawTicker: MutualQuoteData;
+  source: PriceSource;
 }
 
 /**
  * Descobre o preco unitario (BRL por 1 unidade do ativo) fazendo uma cotacao
  * BRL -> ativo com um valor de referencia.
+ *
+ * Estrategia de fonte do preco:
+ *   1. Consulta o ambiente configurado. Se a resposta for TICKER
+ *      (buy/sell/last — preco de mercado sem fee), usa direto.
+ *   2. Se vier o formato "quote" (preco de provider com spread embutido),
+ *      consulta a URL alternativa em busca do ticker (fallback transparente,
+ *      ate a Mutual servir o ticker no mesmo ambiente).
+ *   3. Ultimo recurso: preco derivado do formato "quote".
  *
  * `side` = lado do CLIENTE sobre o ativo: "buy" quando ele compra o ativo,
  * "sell" quando ele vende (define qual ponta do book usar no formato ticker).
@@ -97,21 +115,46 @@ export async function fetchUnitPriceBRL(
   asset: string,
   referenceBrlAmount: number,
   side: QuoteSide = "buy",
+  tickerFallback = true,
 ): Promise<UnitPriceResult> {
-  const ticker = await fetchMutualQuote(clients, {
+  const request: TickerRequest = {
     symbol: `${asset}-BRL`,
     amount: referenceBrlAmount,
     sourceAsset: "BRL",
     targetAsset: asset,
     targetNetwork: ASSET_NETWORKS[asset] ?? "BITCOIN",
-  });
+  };
 
-  const unitPriceBRL = deriveUnitPrice(ticker, side);
-  if (unitPriceBRL === null) {
-    throw new Error(
-      `Cotação-base sem preço reconhecível para ${asset}: ${JSON.stringify(ticker).slice(0, 300)}`,
-    );
+  const primary = await fetchMutualQuote(clients.crypto, request);
+  if (hasTickerPrice(primary)) {
+    return {
+      unitPriceBRL: deriveUnitPrice(primary, side) as number,
+      rawTicker: primary,
+      source: "ticker",
+    };
   }
 
-  return { unitPriceBRL, rawTicker: ticker };
+  if (tickerFallback) {
+    const alternate = clients.crypto === clients.prod ? clients.hml : clients.prod;
+    try {
+      const secondary = await fetchMutualQuote(alternate, request);
+      if (hasTickerPrice(secondary)) {
+        return {
+          unitPriceBRL: deriveUnitPrice(secondary, side) as number,
+          rawTicker: secondary,
+          source: "ticker-fallback",
+        };
+      }
+    } catch {
+      // URL alternativa indisponivel: segue com o formato "quote" do primario.
+    }
+  }
+
+  const unitPriceBRL = deriveUnitPrice(primary, side);
+  if (unitPriceBRL === null) {
+    throw new Error(
+      `Cotação-base sem preço reconhecível para ${asset}: ${JSON.stringify(primary).slice(0, 300)}`,
+    );
+  }
+  return { unitPriceBRL, rawTicker: primary, source: "quote" };
 }

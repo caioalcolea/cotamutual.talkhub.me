@@ -23,6 +23,13 @@ export interface AppConfig {
   quoteQueueIntervalMs: number;
   /** Valor BRL de referencia para descobrir preco unitario. */
   quoteReferenceBrlAmount: number;
+  /**
+   * Quando o ambiente configurado responde no formato "quote" (preco de
+   * provider com spread), buscar o TICKER (preco de mercado sem fee) na URL
+   * alternativa da Mutual. Desativa-se quando a Mutual servir o ticker no
+   * proprio ambiente configurado.
+   */
+  quoteTickerFallback: boolean;
 
   merchantCacheTtlMs: number;
   feeCacheTtlMs: number;
@@ -114,6 +121,7 @@ export function loadConfig(): AppConfig {
     quoteQueueMessages: intEnv("QUOTE_QUEUE_MESSAGES", 10, 1),
     quoteQueueIntervalMs: intEnv("QUOTE_QUEUE_INTERVAL_MS", 3000, 500),
     quoteReferenceBrlAmount: intEnv("QUOTE_REFERENCE_BRL_AMOUNT", 1000, 1),
+    quoteTickerFallback: boolEnv("QUOTE_TICKER_FALLBACK", true),
 
     merchantCacheTtlMs: intEnv("MERCHANT_CACHE_TTL_MS", 60_000, 5_000),
     feeCacheTtlMs: intEnv("FEE_CACHE_TTL_MS", 60_000, 5_000),

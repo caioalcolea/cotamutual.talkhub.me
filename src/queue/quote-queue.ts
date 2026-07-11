@@ -191,7 +191,7 @@ export class QuoteQueue {
           sequence: i,
           totalMessages: session.total,
           result: tick.result,
-          rawTickers: tick.rawTickers,
+          rawTickers: { sources: tick.priceSources, tickers: tick.rawTickers },
           messageSent: message,
           command: ctx.command,
         });

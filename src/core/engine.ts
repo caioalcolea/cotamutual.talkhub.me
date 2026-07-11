@@ -45,6 +45,8 @@ export interface QuoteTick {
   result: QuoteCalculation;
   basePrice: number;
   rawTickers: MutualQuoteData[];
+  /** Fonte do preco-base por perna: ticker | ticker-fallback | quote. */
+  priceSources: string[];
 }
 
 export class QuoteEngine {
@@ -54,6 +56,7 @@ export class QuoteEngine {
     private readonly feeCache: FeeCache,
     private readonly referenceBrlAmount: number,
     private readonly groupMatcher: GroupMatcher,
+    private readonly tickerFallback: boolean = true,
   ) {}
 
   /**
@@ -112,6 +115,7 @@ export class QuoteEngine {
    */
   async tick(ctx: QuoteContext): Promise<QuoteTick> {
     const rawTickers: MutualQuoteData[] = [];
+    const priceSources: string[] = [];
 
     // Preco-base (BRL por unidade) da perna cripto de cada lado.
     let basePrice: number;
@@ -123,8 +127,10 @@ export class QuoteEngine {
         ctx.destinationAsset,
         ctx.amountKind === "source" ? ctx.amount : this.referenceBrlAmount,
         "buy",
+        this.tickerFallback,
       );
       rawTickers.push(dest.rawTicker);
+      priceSources.push(dest.source);
       basePrice = dest.unitPriceBRL;
     } else if (ctx.destinationAsset === "BRL") {
       // Cliente VENDE o ativo de origem -> lado "sell" (bid no formato ticker).
@@ -133,8 +139,10 @@ export class QuoteEngine {
         ctx.sourceAsset,
         this.referenceBrlAmount,
         "sell",
+        this.tickerFallback,
       );
       rawTickers.push(source.rawTicker);
+      priceSources.push(source.source);
       basePrice = source.unitPriceBRL;
     } else {
       // Cripto -> cripto: taxa cruzada via BRL (duas requisicoes separadas):
@@ -144,14 +152,17 @@ export class QuoteEngine {
         ctx.sourceAsset,
         this.referenceBrlAmount,
         "sell",
+        this.tickerFallback,
       );
       const dest = await fetchUnitPriceBRL(
         this.clients,
         ctx.destinationAsset,
         this.referenceBrlAmount,
         "buy",
+        this.tickerFallback,
       );
       rawTickers.push(source.rawTicker, dest.rawTicker);
+      priceSources.push(source.source, dest.source);
       basePrice = source.unitPriceBRL / dest.unitPriceBRL;
     }
 
@@ -180,6 +191,6 @@ export class QuoteEngine {
       });
     }
 
-    return { result, basePrice, rawTickers };
+    return { result, basePrice, rawTickers, priceSources };
   }
 }

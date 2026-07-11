@@ -69,3 +69,57 @@ test("deriveUnitPrice: null quando nenhum preco reconhecivel", () => {
   assert.equal(deriveUnitPrice({}, "buy"), null);
   assert.equal(deriveUnitPrice({ buy: "0", sell: "-1" } as MutualQuoteData, "buy"), null);
 });
+
+// ---------------------------------------------------------------------------
+// Estrategia de fonte do preco: ticker do ambiente > ticker da URL alternativa
+// (fallback transparente) > formato quote
+// ---------------------------------------------------------------------------
+
+import { fetchUnitPriceBRL } from "../src/mutual/quote.js";
+import type { MutualClients } from "../src/mutual/client.js";
+
+function fakeClients(prodData: MutualQuoteData | Error, hmlData: MutualQuoteData | Error) {
+  const calls = { prod: 0, hml: 0 };
+  const mk = (data: MutualQuoteData | Error, key: "prod" | "hml") => ({
+    get: async () => {
+      calls[key] += 1;
+      if (data instanceof Error) throw data;
+      return { data: { error: false, message: "ok", data } };
+    },
+  });
+  const prod = mk(prodData, "prod");
+  const hml = mk(hmlData, "hml");
+  const clients = { prod, hml, crypto: prod } as unknown as MutualClients;
+  return { clients, calls };
+}
+
+test("fetchUnitPriceBRL: prod com formato quote -> busca ticker na alternativa", async () => {
+  const { clients, calls } = fakeClients(QUOTE, TICKER);
+  const r = await fetchUnitPriceBRL(clients, "USDT", 1000, "buy");
+  assert.equal(r.source, "ticker-fallback");
+  assert.equal(r.unitPriceBRL, 5.1636); // ask do ticker, sem o 5.42 do provider
+  assert.equal(calls.prod, 1);
+  assert.equal(calls.hml, 1);
+});
+
+test("fetchUnitPriceBRL: prod ja com ticker -> nao consulta a alternativa", async () => {
+  const { clients, calls } = fakeClients(TICKER, QUOTE);
+  const r = await fetchUnitPriceBRL(clients, "USDT", 1000, "sell");
+  assert.equal(r.source, "ticker");
+  assert.equal(r.unitPriceBRL, 5.1635); // bid
+  assert.equal(calls.hml, 0);
+});
+
+test("fetchUnitPriceBRL: alternativa falha -> usa o formato quote do primario", async () => {
+  const { clients } = fakeClients(QUOTE, new Error("hml fora do ar"));
+  const r = await fetchUnitPriceBRL(clients, "USDT", 1000, "buy");
+  assert.equal(r.source, "quote");
+  assert.ok(Math.abs(r.unitPriceBRL - 5.42) < 0.001);
+});
+
+test("fetchUnitPriceBRL: fallback desativado -> nunca toca a alternativa", async () => {
+  const { clients, calls } = fakeClients(QUOTE, TICKER);
+  const r = await fetchUnitPriceBRL(clients, "USDT", 1000, "buy", false);
+  assert.equal(r.source, "quote");
+  assert.equal(calls.hml, 0);
+});
