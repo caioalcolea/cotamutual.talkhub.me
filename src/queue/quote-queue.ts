@@ -11,6 +11,7 @@ import type { QuoteEngine, QuoteContext } from "../core/engine.js";
 import { formatQuoteMessage, formatQuoteSummary, MESSAGES } from "../core/format.js";
 import type { OutboundSender } from "../channels/outbound.js";
 import type { QuoteLogRepository } from "../state/quote-log.js";
+import { describeError } from "../util/errors.js";
 import { logger } from "../logger.js";
 
 export interface QueueSessionSnapshot {
@@ -198,19 +199,23 @@ export class QuoteQueue {
         consecutiveErrors = 0;
       } catch (error) {
         consecutiveErrors += 1;
+        const detail = describeError(error);
         logger.error("Falha em tick da fila de cotacoes", {
           groupId: ctx.groupId,
           sequence: i,
-          error: String(error),
+          error: detail,
         });
         this.quoteLog.create({
           type: "error",
           channel: ctx.channel,
           groupId: ctx.groupId,
           merchantId: ctx.merchant.id,
+          operation: ctx.operation,
+          sourceAsset: ctx.sourceAsset,
+          destinationAsset: ctx.destinationAsset,
           sequence: i,
           totalMessages: session.total,
-          detail: String(error),
+          detail,
           command: ctx.command,
         });
         if (consecutiveErrors >= 3) {

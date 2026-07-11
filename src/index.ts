@@ -111,7 +111,16 @@ async function main(): Promise<void> {
   app.use(createWebhookRouter(config, processor));
   app.use(
     "/api/panel",
-    createPanelRouter({ config, settings, merchantCache, feeCache, quoteLog, queue, groupMatcher }),
+    createPanelRouter({
+      config,
+      settings,
+      merchantCache,
+      feeCache,
+      quoteLog,
+      queue,
+      groupMatcher,
+      clients,
+    }),
   );
 
   app.listen(config.port, () => {

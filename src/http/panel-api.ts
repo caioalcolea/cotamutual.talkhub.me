@@ -17,7 +17,11 @@ import type { QuoteLogRepository } from "../state/quote-log.js";
 import type { QuoteQueue } from "../queue/quote-queue.js";
 import { auditMerchantFees } from "../core/fees.js";
 import type { GroupMatcher } from "../core/group-matcher.js";
+import type { MutualClients } from "../mutual/client.js";
+import { fetchUnitPriceBRL } from "../mutual/quote.js";
+import { CRYPTO_ASSETS, normalizeAsset } from "../core/assets.js";
 import { FEATURE_DEFAULTS } from "../state/settings.js";
+import { describeError } from "../util/errors.js";
 import { logger } from "../logger.js";
 
 const ToggleInput = z
@@ -41,8 +45,10 @@ export function createPanelRouter(deps: {
   quoteLog: QuoteLogRepository;
   queue: QuoteQueue;
   groupMatcher: GroupMatcher;
+  clients: MutualClients;
 }): Router {
-  const { config, settings, merchantCache, feeCache, quoteLog, queue, groupMatcher } = deps;
+  const { config, settings, merchantCache, feeCache, quoteLog, queue, groupMatcher, clients } =
+    deps;
   const router = Router();
 
   const guard = (req: Request, res: Response, next: NextFunction): void => {
@@ -208,6 +214,45 @@ export function createPanelRouter(deps: {
   router.get("/logs", (req: Request, res: Response) => {
     const limit = Math.min(Number.parseInt(String(req.query.limit ?? "100"), 10) || 100, 500);
     res.json({ logs: quoteLog.recent(limit) });
+  });
+
+  // Diagnostico: testa a cotacao-base de um ativo ao vivo contra a Mutual.
+  // ?asset=USDT|BTC|ETH|USDC  ?env=hml|prod (padrao: ambiente configurado)
+  router.get("/diag/quote", async (req: Request, res: Response) => {
+    const asset = normalizeAsset(String(req.query.asset ?? "USDT"));
+    if (!CRYPTO_ASSETS.has(asset)) {
+      res.status(400).json({ ok: false, error: `Ativo inválido: ${asset}` });
+      return;
+    }
+    const envParam = String(req.query.env ?? "").toLowerCase();
+    const crypto =
+      envParam === "prod" ? clients.prod : envParam === "hml" ? clients.hml : clients.crypto;
+    const env = envParam === "prod" || envParam === "hml" ? envParam : config.cryptoEnv;
+
+    const startedAt = Date.now();
+    try {
+      const result = await fetchUnitPriceBRL(
+        { ...clients, crypto },
+        asset,
+        config.quoteReferenceBrlAmount,
+      );
+      res.json({
+        ok: true,
+        asset,
+        env,
+        unitPriceBRL: result.unitPriceBRL,
+        elapsedMs: Date.now() - startedAt,
+        rawTicker: result.rawTicker,
+      });
+    } catch (error) {
+      res.json({
+        ok: false,
+        asset,
+        env,
+        elapsedMs: Date.now() - startedAt,
+        error: describeError(error),
+      });
+    }
   });
 
   return router;

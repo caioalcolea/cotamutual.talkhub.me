@@ -40,6 +40,7 @@
   .muted { color: var(--muted); }
   #tokenBar { margin: 12px 0 4px; display: flex; gap: 8px; align-items: center; }
   #tokenBar input { background: var(--panel); border: 1px solid var(--border); color: var(--text); border-radius: 8px; padding: 7px 10px; width: 300px; }
+  select { background: var(--panel); border: 1px solid var(--border); color: var(--text); border-radius: 8px; padding: 7px 10px; }
   button { background: var(--accent); border: none; color: #fff; border-radius: 8px; padding: 7px 14px; cursor: pointer; font-weight: 600; }
   button:hover { filter: brightness(1.1); }
   #err { color: var(--danger); margin: 8px 0; min-height: 18px; }
@@ -65,6 +66,23 @@
 
   <div class="cards" id="statusCards"></div>
   <div class="banner">⚠️ <b>Compra (execução automática)</b> vem <b>sempre desligada por padrão</b> e só é ativada manualmente aqui no painel. Com a compra desligada, o /COMPRAR encerra a fila e informa que a operação será concluída manualmente por um operador da Mutual — nenhuma ordem é criada nesta fase.</div>
+
+  <h2>Diagnóstico</h2>
+  <div class="card" style="min-width:100%">
+    <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap">
+      <select id="diagAsset">
+        <option>USDT</option><option>BTC</option><option>ETH</option><option>USDC</option>
+      </select>
+      <select id="diagEnv">
+        <option value="">ambiente configurado</option>
+        <option value="hml">HML</option>
+        <option value="prod">PROD</option>
+      </select>
+      <button onclick="runDiag()">Testar cotação-base</button>
+      <span class="hint">consulta ao vivo GET /crypto/quote na Mutual — mostra o preço ou o erro exato</span>
+    </div>
+    <pre id="diagOut" class="mono" style="margin-top:10px; white-space:pre-wrap; color:#b9c2d4"></pre>
+  </div>
 
   <h2>Canais</h2>
   <div id="channels"></div>
@@ -208,6 +226,16 @@ function renderLogs(data) {
       (l.sequence ? ` · ${l.sequence}/${l.totalMessages}` : "");
     return `<details><summary>${title}</summary><pre>${esc(JSON.stringify(l, null, 2))}</pre></details>`;
   }).join("");
+}
+
+async function runDiag() {
+  $("diagOut").textContent = "consultando a Mutual...";
+  try {
+    const r = await api(`/diag/quote?asset=${$("diagAsset").value}&env=${$("diagEnv").value}`);
+    $("diagOut").textContent = JSON.stringify(r, null, 2);
+  } catch (e) {
+    $("diagOut").textContent = "erro: " + e.message;
+  }
 }
 
 async function refresh() {

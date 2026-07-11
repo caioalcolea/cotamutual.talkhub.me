@@ -20,6 +20,7 @@ import { QuoteEngine, QuoteUserError } from "./engine.js";
 import type { GroupMatcher } from "./group-matcher.js";
 import { parseCommand } from "./parser.js";
 import { MESSAGES } from "./format.js";
+import { describeError } from "../util/errors.js";
 import { logger } from "../logger.js";
 
 export interface IncomingMessage {
@@ -164,17 +165,20 @@ export class MessageProcessor {
         });
         return { handled: true, action: "quote-error" };
       }
+      const detail = describeError(error);
       logger.error("Falha inesperada ao preparar cotacao", {
         channel,
         groupId,
-        error: String(error),
+        error: detail,
       });
       await reply(MESSAGES.quoteFailed);
       this.quoteLog.create({
         type: "error",
         channel,
         groupId,
-        detail: String(error),
+        sourceAsset: parsed.sourceAsset,
+        destinationAsset: parsed.destinationAsset,
+        detail,
         command: parsed.raw,
       });
       return { handled: true, action: "quote-error" };
