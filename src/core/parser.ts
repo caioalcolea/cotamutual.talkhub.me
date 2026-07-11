@@ -25,7 +25,16 @@ export type ParsedCommand =
       amountKind: "source" | "destination";
       raw: string;
     }
-  | { kind: "buy"; raw: string }
+  | {
+      kind: "buy";
+      raw: string;
+      /** true quando o usuario passou argumentos (ex: /COMPRAR 1K BTC). */
+      argsPresent: boolean;
+      /** false quando os argumentos nao foram compreendidos. */
+      argsValid: boolean;
+      amount?: number;
+      asset?: string;
+    }
   | { kind: "help"; raw: string }
   | { kind: "invalid"; reason: string; raw: string };
 
@@ -86,7 +95,30 @@ export function parseCommand(text: string | null | undefined): ParsedCommand | n
   }
 
   if (BUY_COMMANDS.has(command)) {
-    return { kind: "buy", raw };
+    // Argumentos do /COMPRAR sao lidos e conferidos contra a cotacao ativa:
+    //   /COMPRAR                -> confirma a cotacao ativa
+    //   /COMPRAR BTC            -> confirma se a cotacao ativa for de BTC
+    //   /COMPRAR 1K BTC         -> confirma se a cotacao ativa for de 1.000 BTC
+    if (args.length === 0) {
+      return { kind: "buy", raw, argsPresent: false, argsValid: true };
+    }
+    if (args.length === 1) {
+      const asset = normalizeAsset(args[0]);
+      if (isKnownAsset(asset) && asset !== "BRL") {
+        return { kind: "buy", raw, argsPresent: true, argsValid: true, asset };
+      }
+      const amount = parseAmount(args[0]);
+      if (amount !== null) {
+        return { kind: "buy", raw, argsPresent: true, argsValid: true, amount };
+      }
+      return { kind: "buy", raw, argsPresent: true, argsValid: false };
+    }
+    const amount = parseAmount(args[0]);
+    const asset = normalizeAsset(args[1]);
+    if (amount !== null && isKnownAsset(asset) && asset !== "BRL") {
+      return { kind: "buy", raw, argsPresent: true, argsValid: true, amount, asset };
+    }
+    return { kind: "buy", raw, argsPresent: true, argsValid: false };
   }
 
   if (SELL_COMMANDS.has(command)) {

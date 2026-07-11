@@ -42,6 +42,8 @@ export interface ProcessOutcome {
     | "quote-error"
     | "buy-manual"
     | "buy-orders-disabled"
+    | "buy-need-quote"
+    | "buy-mismatch"
     | "group-not-linked";
 }
 
@@ -100,32 +102,92 @@ export class MessageProcessor {
         return { handled: true, action: "group-not-linked" };
       }
 
-      // A compra SEMPRE interrompe a fila de cotacoes em andamento.
-      // A ultima cotacao (fila ativa ou recem-concluida) vira o registro da operacao.
+      // Argumentos do /COMPRAR (ex: /COMPRAR 1K BTC) precisam bater com a
+      // cotacao ativa — nunca confirmar uma operacao diferente da cotada.
+      const pending = this.queue.peekLastQuote(channel, groupId);
+      if (parsed.argsPresent) {
+        if (!parsed.argsValid) {
+          const text = MESSAGES.buyArgsNotUnderstood(pending?.summary ?? null);
+          await reply(text);
+          this.quoteLog.create({
+            type: "buy-mismatch",
+            channel,
+            groupId,
+            merchantId: merchant.id,
+            detail: pending?.summary ?? null,
+            messageSent: text,
+            command: parsed.raw,
+          });
+          return { handled: true, action: "buy-mismatch" };
+        }
+
+        // Ativo transacionado da cotacao ativa (perna nao-BRL).
+        const pendingAsset = pending
+          ? pending.destinationAsset !== "BRL"
+            ? pending.destinationAsset
+            : pending.sourceAsset
+          : null;
+        const assetMatches = parsed.asset ? parsed.asset === pendingAsset : Boolean(pending);
+        const amountMatches =
+          parsed.amount !== undefined && pending
+            ? Math.abs(parsed.amount - pending.amount) < 1e-9
+            : true;
+
+        if (!pending || !assetMatches || !amountMatches) {
+          const requested = [
+            parsed.amount !== undefined ? String(parsed.amount) : null,
+            parsed.asset ?? pendingAsset ?? "<ativo>",
+          ]
+            .filter(Boolean)
+            .join(" ");
+          const text = MESSAGES.buyMismatch(pending?.summary ?? null, requested);
+          await reply(text);
+          this.quoteLog.create({
+            type: "buy-mismatch",
+            channel,
+            groupId,
+            merchantId: merchant.id,
+            detail: `pedido: ${parsed.raw} | ativa: ${pending?.summary ?? "nenhuma"}`,
+            messageSent: text,
+            command: parsed.raw,
+          });
+          return { handled: true, action: "buy-mismatch" };
+        }
+      }
+
+      // A compra interrompe a fila e CONSOME a cotacao: cada cotacao confirma
+      // no maximo UMA operacao — o proximo /COMPRAR exige cotacao nova.
       const lastQuote = this.queue.interruptForBuy(channel, groupId);
+      if (!lastQuote) {
+        await reply(MESSAGES.buyNeedQuote);
+        this.quoteLog.create({
+          type: "buy-need-quote",
+          channel,
+          groupId,
+          merchantId: merchant.id,
+          merchantName: merchant.legalName ?? null,
+          messageSent: MESSAGES.buyNeedQuote,
+          command: parsed.raw,
+        });
+        return { handled: true, action: "buy-need-quote" };
+      }
+
       const transactionId = randomUUID();
 
       // Compra ativada no painel + ORDERS_ENABLED=false: NUNCA chamar
       // POST /api/v2/crypto/orders (secao 16/19 do descritivo) — mesma
       // conclusao manual, com o aviso de execucao automatica indisponivel.
       const closing = toggles.buy ? MESSAGES.ordersNotEnabledClosing : MESSAGES.manualClosing;
-
-      let text: string;
-      if (lastQuote) {
-        const record = formatOperationRecord({
-          groupId,
-          transactionId,
-          date: new Date(),
-          operation: lastQuote.operation,
-          sourceAsset: lastQuote.sourceAsset,
-          destinationAsset: lastQuote.destinationAsset,
-          result: lastQuote.result,
-        });
-        text = MESSAGES.buyWithRecord(record, closing);
-      } else {
-        // Sem cotacao recente no grupo: confirma o recebimento sem montantes.
-        text = toggles.buy ? `✅ Pedido recebido!\n${closing}` : MESSAGES.buyManual(null);
-      }
+      const record = formatOperationRecord({
+        groupId,
+        transactionId,
+        date: new Date(),
+        operation: lastQuote.operation,
+        sourceAsset: lastQuote.sourceAsset,
+        destinationAsset: lastQuote.destinationAsset,
+        result: lastQuote.result,
+      });
+      const text = MESSAGES.buyWithRecord(record, closing);
 
       await reply(text);
       this.quoteLog.create({

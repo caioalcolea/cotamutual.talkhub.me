@@ -241,12 +241,28 @@ export const MESSAGES = {
   buyWithRecord: (record: string, closing: string): string =>
     `✅ Pedido recebido!\n\n${record}\n\n${closing}`,
 
-  // Compra sem cotacao recente no grupo: pede uma cotacao antes.
-  buyManual: (lastQuote: string | null): string =>
+  // Compra sem cotacao valida no grupo (nenhuma, expirada ou ja consumida
+  // por um /COMPRAR anterior): exige cotacao atualizada antes de confirmar.
+  buyNeedQuote: [
+    "ℹ️ Para confirmar a operação é preciso uma cotação atualizada — os preços mudam a cada segundo e cada cotação vale para uma única confirmação.",
+    "Envie /COTAR (ex: /COTAR 25K USDT) e confirme com /COMPRAR em seguida.",
+  ].join("\n"),
+
+  // /COMPRAR com argumentos que nao batem com a cotacao ativa.
+  buyMismatch: (activeSummary: string | null, requested: string): string =>
     [
-      "✅ Pedido recebido!",
-      lastQuote ? `🔒 Última cotação registrada: ${lastQuote}` : null,
-      "A operação será concluída manualmente por um operador da Mutual. Aguarde a confirmação aqui no grupo. 🤝",
+      activeSummary
+        ? `⚠️ A cotação ativa é: ${activeSummary}`
+        : "⚠️ Não há cotação ativa para esse pedido.",
+      `Para operar ${requested}, gere uma cotação atualizada: envie /COTAR ${requested} e confirme com /COMPRAR.`,
+    ].join("\n"),
+
+  // /COMPRAR com argumentos incompreensiveis.
+  buyArgsNotUnderstood: (activeSummary: string | null): string =>
+    [
+      "⚠️ Não entendi os detalhes do pedido.",
+      activeSummary ? `A cotação ativa é: ${activeSummary}` : null,
+      "Envie /COMPRAR (sem argumentos) para confirmar a cotação ativa, ou /COTAR <valor> <ativo> para uma nova cotação.",
     ]
       .filter(Boolean)
       .join("\n"),

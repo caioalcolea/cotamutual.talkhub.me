@@ -18,6 +18,8 @@ export interface QuoteLogEntry {
     | "quote-manual"
     | "buy-interrupt"
     | "buy-manual"
+    | "buy-need-quote"
+    | "buy-mismatch"
     | "queue-finished"
     | "error";
   channel: string;

@@ -228,3 +228,24 @@ test("SettingsStore: compra SEMPRE desligada por padrao; cotacoes ligadas", () =
   const reloaded = new SettingsStore(dir);
   assert.equal(reloaded.getEffective("whatsapp", "G1").buy, true);
 });
+
+test("parseCommand: argumentos do /COMPRAR sao lidos", () => {
+  const bare = parseCommand("/COMPRAR");
+  assert.ok(bare && bare.kind === "buy" && !bare.argsPresent && bare.argsValid);
+
+  const withAll = parseCommand("/comprar 1k btc");
+  assert.ok(withAll && withAll.kind === "buy");
+  assert.equal(withAll.argsPresent, true);
+  assert.equal(withAll.argsValid, true);
+  assert.equal(withAll.amount, 1000);
+  assert.equal(withAll.asset, "BTC");
+
+  const assetOnly = parseCommand("/comprar usdt");
+  assert.ok(assetOnly && assetOnly.kind === "buy" && assetOnly.asset === "USDT");
+
+  const amountOnly = parseCommand("/comprar 100k");
+  assert.ok(amountOnly && amountOnly.kind === "buy" && amountOnly.amount === 100_000);
+
+  const garbage = parseCommand("/comprar tudo agora");
+  assert.ok(garbage && garbage.kind === "buy" && garbage.argsPresent && !garbage.argsValid);
+});

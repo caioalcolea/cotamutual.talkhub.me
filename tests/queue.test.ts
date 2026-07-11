@@ -142,3 +142,23 @@ test("formatOperationRecord: venda BTC mostra montante liquido em BRL", () => {
   assert.match(record, /💵 Montante em BTC:\nTotal: 1 BTC/);
   assert.match(record, /💼 Montante em BRL:\nTotal: R\$[\s ]593\.990,00/);
 });
+
+test("cotacao e CONSUMIDA pelo /COMPRAR: segunda confirmacao exige cotacao nova", async () => {
+  const { queue } = buildQueue(1);
+  queue.start(buildContext());
+  for (let i = 0; i < 40 && queue.snapshot().active.length > 0; i += 1) {
+    await sleep(50);
+  }
+
+  // peek nao consome
+  assert.ok(queue.peekLastQuote("whatsapp", "G1"));
+  assert.ok(queue.peekLastQuote("whatsapp", "G1"));
+
+  // primeira compra consome
+  const first = queue.interruptForBuy("whatsapp", "G1");
+  assert.ok(first);
+
+  // segunda compra: sem cotacao — precisa cotar de novo
+  assert.equal(queue.peekLastQuote("whatsapp", "G1"), null);
+  assert.equal(queue.interruptForBuy("whatsapp", "G1"), null);
+});

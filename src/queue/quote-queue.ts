@@ -56,6 +56,9 @@ export interface LastQuoteInfo {
   operation: string;
   sourceAsset: string;
   destinationAsset: string;
+  /** Valor pedido no comando original (ex: 100000 em /COTAR 100K USDT). */
+  amount: number;
+  amountKind: "source" | "destination";
   result: import("../core/pricing.js").QuoteCalculation;
   at: number;
 }
@@ -96,20 +99,28 @@ export class QuoteQueue {
     return this.snapshotOf(session);
   }
 
-  /**
-   * Interrompe a fila do grupo por um comando de compra.
-   * Retorna a ultima cotacao completa do grupo — cada tick atualiza o registro,
-   * entao vale tanto para fila ativa quanto para fila ja concluida (TTL 15min).
-   */
-  interruptForBuy(channel: string, groupId: string): LastQuoteInfo | null {
+  /** Ultima cotacao do grupo (TTL 15min) SEM consumir nem interromper a fila. */
+  peekLastQuote(channel: string, groupId: string): LastQuoteInfo | null {
     const key = sessionKey(channel, groupId);
-    this.cancel(key, "interrupted");
-
     const recent = this.lastQuotes.get(key);
     if (recent && Date.now() - recent.at < LAST_QUOTE_TTL_MS) {
       return recent;
     }
     return null;
+  }
+
+  /**
+   * Interrompe a fila do grupo por um comando de compra e CONSOME a cotacao:
+   * cada cotacao confirma no maximo UMA operacao — o proximo /COMPRAR exige
+   * uma nova cotacao atualizada (os precos mudam a cada segundo).
+   */
+  interruptForBuy(channel: string, groupId: string): LastQuoteInfo | null {
+    const key = sessionKey(channel, groupId);
+    this.cancel(key, "interrupted");
+
+    const recent = this.peekLastQuote(channel, groupId);
+    this.lastQuotes.delete(key);
+    return recent;
   }
 
   /** Snapshot das filas ativas + historico recente (painel). */
@@ -195,6 +206,8 @@ export class QuoteQueue {
           operation: ctx.operation,
           sourceAsset: ctx.sourceAsset,
           destinationAsset: ctx.destinationAsset,
+          amount: ctx.amount,
+          amountKind: ctx.amountKind,
           result: tick.result,
           at: Date.now(),
         });
