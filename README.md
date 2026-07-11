@@ -1,6 +1,6 @@
-# cotamutual — Cotações por Grupo com Fees da Mutual
+# cotacaomutual — Cotações por Grupo com Fees da Mutual
 
-Serviço que monitora mensagens de grupos (WhatsApp e outros canais), identifica o **merchant pelo grupo**, interpreta comandos iniciados por `/`, consulta a **cotação-base** e as **fees do merchant** na Mutual API v2, aplica fee fixa + percentual e responde no grupo — com **painel visual de controle** em `https://cotamutual.talkhub.me/painel`.
+Serviço que monitora mensagens de grupos (WhatsApp via **Evolution API v2**), identifica o **merchant pelo grupo**, interpreta comandos iniciados por `/`, consulta a **cotação-base** e as **fees do merchant** na Mutual API v2, aplica fee fixa + percentual e responde no grupo — com **painel visual de controle** em `https://cotacaomutual.talkhub.me/painel`.
 
 > O servidor MCP original (camada fina sobre a Mutual API) continua intacto em [`mcpcotacaomutual.talkhub.me/`](./mcpcotacaomutual.talkhub.me/) — é um serviço separado, com deploy próprio.
 
@@ -90,20 +90,22 @@ Proteja com `PANEL_TOKEN` (o painel pede o token e envia como Bearer).
 
 ### Webhook de entrada
 
+Aceita o payload nativo da **Evolution API v2** (evento `MESSAGES_UPSERT`) e um contrato genérico:
+
 ```bash
-curl -X POST https://cotamutual.talkhub.me/webhook \
+curl -X POST 'https://cotacaomutual.talkhub.me/webhook?token=SEU_WEBHOOK_TOKEN' \
   -H 'Content-Type: application/json' \
-  -H 'Authorization: Bearer SEU_WEBHOOK_TOKEN' \
-  -d '{"channel":"whatsapp","groupId":"ID_DO_GRUPO","text":"/COTAR 25K USDT"}'
+  -d '{"channel":"whatsapp","groupId":"120363...@g.us","text":"/COTAR 25K USDT"}'
 ```
 
-Aliases aceitos no payload: `group_id`/`remoteJid`/`chatId` para o grupo; `message`/`body`/`data.message.conversation` para o texto.
+Regras para payloads Evolution: só `messages.upsert` é processado; mensagens do próprio bot (`fromMe=true`) são ignoradas (anti-loop); só grupos (`...@g.us`) são atendidos. Texto é lido de `message.conversation` ou `message.extendedTextMessage.text`.
 
 ### Envio ao grupo (saída)
 
 As mensagens da fila são entregues via `OUTBOUND_MODE`:
 
-* `webhook`: `POST OUTBOUND_WEBHOOK_URL` com `{channel, groupId, text}` (+ `Authorization: Bearer OUTBOUND_TOKEN` se definido) — aponte para o gateway do canal (Evolution API / TalkHub etc.).
+* `evolution` (produção): `POST {EVOLUTION_BASE_URL}/message/sendText/{EVOLUTION_INSTANCE}` com header `apikey` e body `{number, text}`.
+* `webhook`: `POST OUTBOUND_WEBHOOK_URL` com `{channel, groupId, text}` (+ `Authorization: Bearer OUTBOUND_TOKEN` se definido).
 * `log`: apenas registra (desenvolvimento).
 
 ---
@@ -150,20 +152,35 @@ npm test          # regras de negócio (parser, operações, fees, toggles)
 npm run dev       # tsx watch
 ```
 
-## Deploy (Docker Swarm + Traefik, rede `talkhub`)
+## Deploy em produção (Docker Swarm + Traefik + Portainer, rede `talkhub`)
+
+**Primeiro deploy** — o `setup.sh` faz tudo (verificações, volume externo, `.env` com tokens gerados, build, deploy e registro do webhook na Evolution):
 
 ```bash
-cd /root/cotamutual.talkhub.me
-cp .env.example .env && nano .env && chmod 600 .env
-docker build -t cotamutual:latest .
-set -a; source .env; set +a
-docker stack deploy -c docker-compose.yml cotamutual
-
-# observar
-docker service logs -f cotamutual_cotamutual
+cd /root/cotacaomutual.talkhub.me
+bash setup.sh
+# pergunta apenas a MUTUAL_API_KEY (ak_...); o resto vem pré-configurado
 ```
 
-O stack publica `https://cotamutual.talkhub.me` (entrypoint `websecure`, resolver `letsencryptresolver`) e persiste `DATA_DIR` no volume `cotamutual_data`.
+**Atualizações**:
+
+```bash
+cd /root/cotacaomutual.talkhub.me
+git pull   # ou copie os arquivos novos
+docker build -t cotacaomutual:latest .
+docker service update --image cotacaomutual:latest --force cotacaomutual_cotacaomutual
+
+# observar
+docker service logs -f cotacaomutual_cotacaomutual
+```
+
+O stack `cotacaomutual` publica `https://cotacaomutual.talkhub.me` (entrypoint `websecure`, resolver `letsencryptresolver` — mesmo padrão das demais stacks da VPS), persiste `DATA_DIR` no volume externo `cotacaomutual_data`, não publica portas no host (sem conflito com os serviços existentes) e aparece no Portainer em **Stacks**.
+
+### Evolution API (WhatsApp)
+
+* Instância: `talkbia` em `https://whatsapp.talkhub.me` (v2.3.7).
+* Entrada: webhook `MESSAGES_UPSERT` → `https://cotacaomutual.talkhub.me/webhook?token=<WEBHOOK_TOKEN>` (registrado pelo `setup.sh`; se falhar, registre no Evolution Manager com essa URL).
+* Saída: `sendText` na mesma instância com a `apikey` do `.env`.
 
 ---
 

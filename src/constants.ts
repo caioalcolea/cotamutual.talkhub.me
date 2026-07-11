@@ -2,7 +2,7 @@
  * Constantes compartilhadas do servico cotamutual.
  */
 
-export const SERVICE_NAME = "cotamutual";
+export const SERVICE_NAME = "cotacaomutual";
 export const SERVICE_VERSION = "2.0.0";
 
 /** Base URLs padrao da Mutual API v2. */

@@ -5,7 +5,7 @@
 import { DEFAULT_HML_BASE_URL, DEFAULT_PROD_BASE_URL } from "./constants.js";
 
 export type CryptoEnv = "hml" | "prod";
-export type OutboundMode = "webhook" | "log";
+export type OutboundMode = "evolution" | "webhook" | "log";
 
 export interface AppConfig {
   port: number;
@@ -35,6 +35,11 @@ export interface AppConfig {
   outboundMode: OutboundMode;
   outboundWebhookUrl: string | null;
   outboundToken: string | null;
+
+  /** Evolution API (OUTBOUND_MODE=evolution): envio de mensagens ao grupo. */
+  evolutionBaseUrl: string | null;
+  evolutionInstance: string | null;
+  evolutionApiKey: string | null;
 }
 
 function required(name: string): string {
@@ -71,13 +76,26 @@ export function loadConfig(): AppConfig {
   }
 
   const rawOutbound = (process.env.OUTBOUND_MODE || "log").toLowerCase();
-  if (rawOutbound !== "webhook" && rawOutbound !== "log") {
-    console.error(`ERRO: OUTBOUND_MODE invalido: "${rawOutbound}" (use "webhook" ou "log")`);
+  if (rawOutbound !== "evolution" && rawOutbound !== "webhook" && rawOutbound !== "log") {
+    console.error(
+      `ERRO: OUTBOUND_MODE invalido: "${rawOutbound}" (use "evolution", "webhook" ou "log")`,
+    );
     process.exit(1);
   }
   const outboundWebhookUrl = process.env.OUTBOUND_WEBHOOK_URL?.trim() || null;
   if (rawOutbound === "webhook" && !outboundWebhookUrl) {
     console.error("ERRO: OUTBOUND_MODE=webhook exige OUTBOUND_WEBHOOK_URL definido.");
+    process.exit(1);
+  }
+
+  const evolutionBaseUrl =
+    process.env.EVOLUTION_BASE_URL?.trim().replace(/\/+$/, "") || null;
+  const evolutionInstance = process.env.EVOLUTION_INSTANCE?.trim() || null;
+  const evolutionApiKey = process.env.EVOLUTION_API_KEY?.trim() || null;
+  if (rawOutbound === "evolution" && (!evolutionBaseUrl || !evolutionInstance || !evolutionApiKey)) {
+    console.error(
+      "ERRO: OUTBOUND_MODE=evolution exige EVOLUTION_BASE_URL, EVOLUTION_INSTANCE e EVOLUTION_API_KEY.",
+    );
     process.exit(1);
   }
 
@@ -106,5 +124,9 @@ export function loadConfig(): AppConfig {
     outboundMode: rawOutbound as OutboundMode,
     outboundWebhookUrl,
     outboundToken: process.env.OUTBOUND_TOKEN?.trim() || null,
+
+    evolutionBaseUrl,
+    evolutionInstance,
+    evolutionApiKey,
   };
 }

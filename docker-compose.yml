@@ -1,49 +1,50 @@
 version: "3.7"
-
-# =============================================================================
-# Stack: cotamutual
-# Bot de cotacoes por grupo + painel publicado em https://cotamutual.talkhub.me
-#
-# Padrao do servidor:
-#   - rede overlay externa "talkhub"
-#   - Traefik v3 (entrypoint websecure + certresolver letsencryptresolver)
-#   - imagem buildada localmente (cotamutual:latest)
-#
-# Deploy:
-#   set -a; source .env; set +a
-#   docker stack deploy -c docker-compose.yml cotamutual
-# =============================================================================
-
 services:
 
-  cotamutual:
-    image: cotamutual:latest
+## --------------------------- COTACAO MUTUAL --------------------------- ##
+
+  cotacaomutual:
+    image: cotacaomutual:latest ## Build local: docker build -t cotacaomutual:latest .
+
+    volumes:
+      - cotacaomutual_data:/app/data
 
     networks:
-      - talkhub
+      - talkhub ## Nome da rede interna
 
     environment:
       - PORT=3000
+
+    ## 🔑 Mutual API v2
       - MUTUAL_PROD_BASE_URL=https://apis.mutual.app.br
       - MUTUAL_HML_BASE_URL=https://apis-hml.mutual.app.br
       - MUTUAL_CRYPTO_ENV=${MUTUAL_CRYPTO_ENV:-hml}
       - MUTUAL_API_KEY=${MUTUAL_API_KEY}
       - MUTUAL_SERVICE_TOKEN=${MUTUAL_SERVICE_TOKEN}
-      # Fase atual: NUNCA habilitar ordens sem alinhamento com a Mutual.
+
+    ## 🚫 Fase atual: ordens SEMPRE desabilitadas (somente cotações)
       - ORDERS_ENABLED=${ORDERS_ENABLED:-false}
+
+    ## 📊 Fila de cotações (10 msgs, requisições separadas)
       - QUOTE_QUEUE_MESSAGES=${QUOTE_QUEUE_MESSAGES:-10}
       - QUOTE_QUEUE_INTERVAL_MS=${QUOTE_QUEUE_INTERVAL_MS:-3000}
       - QUOTE_REFERENCE_BRL_AMOUNT=${QUOTE_REFERENCE_BRL_AMOUNT:-1000}
+
+    ## 💾 Persistência (toggles do painel + registro de cotações)
       - DATA_DIR=/app/data
+
+    ## 🔐 Proteção dos endpoints
       - WEBHOOK_TOKEN=${WEBHOOK_TOKEN}
       - PANEL_TOKEN=${PANEL_TOKEN}
-      - OUTBOUND_MODE=${OUTBOUND_MODE:-webhook}
-      - OUTBOUND_WEBHOOK_URL=${OUTBOUND_WEBHOOK_URL}
-      - OUTBOUND_TOKEN=${OUTBOUND_TOKEN}
-      - TZ=America/Sao_Paulo
 
-    volumes:
-      - cotamutual_data:/app/data
+    ## 📱 Evolution API v2 (envio das mensagens ao grupo)
+      - OUTBOUND_MODE=${OUTBOUND_MODE:-evolution}
+      - EVOLUTION_BASE_URL=${EVOLUTION_BASE_URL:-https://whatsapp.talkhub.me}
+      - EVOLUTION_INSTANCE=${EVOLUTION_INSTANCE:-talkbia}
+      - EVOLUTION_API_KEY=${EVOLUTION_API_KEY}
+
+    ## 🌎 Timezone
+      - TZ=America/Sao_Paulo
 
     healthcheck:
       test:
@@ -68,19 +69,21 @@ services:
           memory: 512M
       labels:
         - traefik.enable=true
-        - traefik.docker.network=talkhub
-        - traefik.http.routers.cotamutual.rule=Host(`cotamutual.talkhub.me`)
-        - traefik.http.routers.cotamutual.entrypoints=websecure
-        - traefik.http.routers.cotamutual.tls=true
-        - traefik.http.routers.cotamutual.tls.certresolver=letsencryptresolver
-        - traefik.http.routers.cotamutual.service=cotamutual
-        - traefik.http.services.cotamutual.loadbalancer.server.port=3000
-        - traefik.http.services.cotamutual.loadbalancer.passHostHeader=true
+        - traefik.http.routers.cotacaomutual.rule=Host(`cotacaomutual.talkhub.me`) ## Url do serviço
+        - traefik.http.routers.cotacaomutual.entrypoints=websecure
+        - traefik.http.routers.cotacaomutual.tls.certresolver=letsencryptresolver
+        - traefik.http.services.cotacaomutual.loadbalancer.server.port=3000
+        - traefik.http.services.cotacaomutual.loadbalancer.passHostHeader=true
+        - traefik.http.routers.cotacaomutual.service=cotacaomutual
 
-networks:
-  talkhub:
-    external: true
-    name: talkhub
+## --------------------------- COTACAO MUTUAL --------------------------- ##
 
 volumes:
-  cotamutual_data:
+  cotacaomutual_data:
+    external: true
+    name: cotacaomutual_data
+
+networks:
+  talkhub: ## Nome da rede interna
+    external: true
+    name: talkhub ## Nome da rede interna

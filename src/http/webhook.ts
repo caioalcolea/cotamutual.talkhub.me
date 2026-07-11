@@ -1,12 +1,21 @@
 /**
  * Webhook de entrada: mensagens dos grupos.
  *
- * Contrato principal:
- *   POST /webhook            { "channel": "whatsapp", "groupId": "...", "text": "/COTAR 25K USDT" }
- *   POST /webhook/:channel   { "groupId": "...", "text": "..." }
+ * Contratos aceitos:
  *
- * Aceita aliases comuns de gateways (message/body, group_id/remoteJid/chatId,
- * data.message.conversation) para facilitar a integracao.
+ * 1) Generico (integracoes proprias / testes):
+ *    POST /webhook            { "channel": "whatsapp", "groupId": "...", "text": "/COTAR 25K USDT" }
+ *    POST /webhook/:channel   { "groupId": "...", "text": "..." }
+ *
+ * 2) Evolution API v2 (evento MESSAGES_UPSERT):
+ *    { "event": "messages.upsert", "instance": "talkbia",
+ *      "data": { "key": { "remoteJid": "1203...@g.us", "fromMe": false },
+ *                "message": { "conversation": "/COTAR ..." } } }
+ *
+ * Regras para payloads Evolution:
+ *   - somente "messages.upsert" e processado (demais eventos: ignorados com 200);
+ *   - mensagens do proprio bot (fromMe=true) sao ignoradas (evita loop);
+ *   - somente grupos (remoteJid terminando em "@g.us") sao processados.
  */
 
 import { Router, type Request, type Response } from "express";
@@ -21,23 +30,53 @@ function pickString(...candidates: unknown[]): string | null {
   return null;
 }
 
-function extractIncoming(req: Request): {
+export interface ExtractedIncoming {
   channel: string | null;
   groupId: string | null;
   text: string | null;
   groupName?: string;
-} {
-  const body = (req.body ?? {}) as Record<string, unknown>;
-  const data = (body.data ?? {}) as Record<string, unknown>;
+  /** Motivo para ignorar o payload silenciosamente (responder 200 sem processar). */
+  ignore?: "event" | "from-me" | "not-group";
+  /** true quando o payload tem formato Evolution (tem campo event/instance). */
+  isEvolution: boolean;
+}
+
+export function extractIncoming(
+  body: unknown,
+  channelParam?: string,
+): ExtractedIncoming {
+  const b = (body ?? {}) as Record<string, unknown>;
+  const data = (b.data ?? {}) as Record<string, unknown>;
   const key = (data.key ?? {}) as Record<string, unknown>;
   const message = (data.message ?? {}) as Record<string, unknown>;
+  const extended = (message.extendedTextMessage ?? {}) as Record<string, unknown>;
 
-  return {
-    channel: pickString(body.channel, req.params.channel, "whatsapp"),
-    groupId: pickString(body.groupId, body.group_id, body.remoteJid, body.chatId, key.remoteJid),
-    text: pickString(body.text, body.message, body.body, message.conversation),
-    groupName: pickString(body.groupName, body.group_name, data.pushName) ?? undefined,
+  const isEvolution = typeof b.event === "string" || typeof b.instance === "string";
+
+  const base: Omit<ExtractedIncoming, "ignore"> = {
+    channel: pickString(b.channel, channelParam, "whatsapp"),
+    groupId: pickString(b.groupId, b.group_id, b.remoteJid, b.chatId, key.remoteJid),
+    text: pickString(b.text, b.message, b.body, message.conversation, extended.text),
+    groupName: pickString(b.groupName, b.group_name) ?? undefined,
+    isEvolution,
   };
+
+  if (isEvolution) {
+    const event = String(b.event ?? "").toLowerCase().replace(/_/g, ".");
+    if (event && event !== "messages.upsert") {
+      return { ...base, ignore: "event" };
+    }
+    if (key.fromMe === true) {
+      return { ...base, ignore: "from-me" };
+    }
+    const jid = pickString(key.remoteJid);
+    // Fase atual: somente grupos (o descritivo cobre monitoramento de grupos).
+    if (!pickString(b.groupId) && jid && !jid.endsWith("@g.us")) {
+      return { ...base, ignore: "not-group" };
+    }
+  }
+
+  return base;
 }
 
 export function createWebhookRouter(config: AppConfig, processor: MessageProcessor): Router {
@@ -57,8 +96,20 @@ export function createWebhookRouter(config: AppConfig, processor: MessageProcess
   const handler = async (req: Request, res: Response): Promise<void> => {
     if (!guard(req, res)) return;
 
-    const incoming = extractIncoming(req);
+    const incoming = extractIncoming(req.body, req.params.channel);
+
+    if (incoming.ignore) {
+      res.status(200).json({ handled: false, reason: incoming.ignore });
+      return;
+    }
+
     if (!incoming.groupId || !incoming.text) {
+      // Payloads Evolution sem texto (midia, reacao, etc): ignorar sem erro
+      // para nao gerar tempestade de retries no gateway.
+      if (incoming.isEvolution) {
+        res.status(200).json({ handled: false, reason: "no-text" });
+        return;
+      }
       res.status(400).json({
         error: "Payload inválido. Esperado: { channel, groupId, text }.",
       });
