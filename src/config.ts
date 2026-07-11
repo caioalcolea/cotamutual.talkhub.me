@@ -69,7 +69,9 @@ function boolEnv(name: string, fallback: boolean): boolean {
 }
 
 export function loadConfig(): AppConfig {
-  const rawCryptoEnv = (process.env.MUTUAL_CRYPTO_ENV || "hml").toLowerCase();
+  // Padrao "prod": a cotacao (somente leitura) e validada em producao;
+  // a HML recusa pares/oscila. Ordens seguem bloqueadas por ORDERS_ENABLED.
+  const rawCryptoEnv = (process.env.MUTUAL_CRYPTO_ENV || "prod").toLowerCase();
   if (rawCryptoEnv !== "hml" && rawCryptoEnv !== "prod") {
     console.error(`ERRO: MUTUAL_CRYPTO_ENV invalido: "${rawCryptoEnv}" (use "hml" ou "prod")`);
     process.exit(1);

@@ -132,7 +132,7 @@ Veja [`.env.example`](./.env.example). Principais:
 | Variável | Padrão | Descrição |
 | --- | --- | --- |
 | `MUTUAL_API_KEY` / `MUTUAL_SERVICE_TOKEN` | — | Credenciais Mutual (obrigatórias) |
-| `MUTUAL_CRYPTO_ENV` | `hml` | Ambiente do `/crypto/quote` |
+| `MUTUAL_CRYPTO_ENV` | `prod` | Ambiente do `/crypto/quote` (cotação é somente leitura) |
 | `ORDERS_ENABLED` | `false` | **Manter false nesta fase** |
 | `QUOTE_QUEUE_MESSAGES` | `10` | Mensagens por fila de cotação |
 | `QUOTE_QUEUE_INTERVAL_MS` | `3000` | Intervalo entre mensagens |

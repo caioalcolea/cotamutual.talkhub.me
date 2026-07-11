@@ -18,7 +18,7 @@ services:
     ## 🔑 Mutual API v2
       - MUTUAL_PROD_BASE_URL=https://apis.mutual.app.br
       - MUTUAL_HML_BASE_URL=https://apis-hml.mutual.app.br
-      - MUTUAL_CRYPTO_ENV=${MUTUAL_CRYPTO_ENV:-hml}
+      - MUTUAL_CRYPTO_ENV=${MUTUAL_CRYPTO_ENV:-prod}
       - MUTUAL_API_KEY=${MUTUAL_API_KEY}
       - MUTUAL_SERVICE_TOKEN=${MUTUAL_SERVICE_TOKEN}
 

@@ -86,7 +86,7 @@ else
 # cotacaomutual — gerado por setup.sh em $(date -Iseconds)
 
 # --- Mutual API v2 ---
-MUTUAL_CRYPTO_ENV=hml
+MUTUAL_CRYPTO_ENV=prod
 MUTUAL_API_KEY=$MUTUAL_API_KEY_IN
 MUTUAL_SERVICE_TOKEN=$MUTUAL_SERVICE_TOKEN_IN
 
