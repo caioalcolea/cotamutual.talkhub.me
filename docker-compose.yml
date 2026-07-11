@@ -1,38 +1,49 @@
 version: "3.7"
 
 # =============================================================================
-# Stack: mcpcotacaomutual
-# Servidor MCP (Mutual API v2) publicado em https://mcpcotacaomutual.talkhub.me
+# Stack: cotamutual
+# Bot de cotacoes por grupo + painel publicado em https://cotamutual.talkhub.me
 #
 # Padrao do servidor:
 #   - rede overlay externa "talkhub"
 #   - Traefik v3 (entrypoint websecure + certresolver letsencryptresolver)
-#   - imagem buildada localmente (mcpcotacaomutual:latest), igual aos demais MCPs
+#   - imagem buildada localmente (cotamutual:latest)
 #
-# Os valores ${...} sao substituidos a partir do .env no momento do deploy:
-#   set -a; source .env; set +a; docker stack deploy -c docker-compose.yml mcpcotacaomutual
+# Deploy:
+#   set -a; source .env; set +a
+#   docker stack deploy -c docker-compose.yml cotamutual
 # =============================================================================
 
 services:
 
-## --------------------------- mcpcotacaomutual --------------------------- ##
-
-  mcpcotacaomutual:
-    image: mcpcotacaomutual:latest
+  cotamutual:
+    image: cotamutual:latest
 
     networks:
       - talkhub
 
     environment:
-      - TRANSPORT=http
       - PORT=3000
       - MUTUAL_PROD_BASE_URL=https://apis.mutual.app.br
       - MUTUAL_HML_BASE_URL=https://apis-hml.mutual.app.br
       - MUTUAL_CRYPTO_ENV=${MUTUAL_CRYPTO_ENV:-hml}
       - MUTUAL_API_KEY=${MUTUAL_API_KEY}
       - MUTUAL_SERVICE_TOKEN=${MUTUAL_SERVICE_TOKEN}
-      - MCP_AUTH_TOKEN=${MCP_AUTH_TOKEN}
+      # Fase atual: NUNCA habilitar ordens sem alinhamento com a Mutual.
+      - ORDERS_ENABLED=${ORDERS_ENABLED:-false}
+      - QUOTE_QUEUE_MESSAGES=${QUOTE_QUEUE_MESSAGES:-10}
+      - QUOTE_QUEUE_INTERVAL_MS=${QUOTE_QUEUE_INTERVAL_MS:-3000}
+      - QUOTE_REFERENCE_BRL_AMOUNT=${QUOTE_REFERENCE_BRL_AMOUNT:-1000}
+      - DATA_DIR=/app/data
+      - WEBHOOK_TOKEN=${WEBHOOK_TOKEN}
+      - PANEL_TOKEN=${PANEL_TOKEN}
+      - OUTBOUND_MODE=${OUTBOUND_MODE:-webhook}
+      - OUTBOUND_WEBHOOK_URL=${OUTBOUND_WEBHOOK_URL}
+      - OUTBOUND_TOKEN=${OUTBOUND_TOKEN}
       - TZ=America/Sao_Paulo
+
+    volumes:
+      - cotamutual_data:/app/data
 
     healthcheck:
       test:
@@ -58,19 +69,18 @@ services:
       labels:
         - traefik.enable=true
         - traefik.docker.network=talkhub
-        # Router HTTPS
-        - traefik.http.routers.mcpcotacaomutual.rule=Host(`mcpcotacaomutual.talkhub.me`)
-        - traefik.http.routers.mcpcotacaomutual.entrypoints=websecure
-        - traefik.http.routers.mcpcotacaomutual.tls=true
-        - traefik.http.routers.mcpcotacaomutual.tls.certresolver=letsencryptresolver
-        - traefik.http.routers.mcpcotacaomutual.service=mcpcotacaomutual
-        # Service (porta interna do container)
-        - traefik.http.services.mcpcotacaomutual.loadbalancer.server.port=3000
-        - traefik.http.services.mcpcotacaomutual.loadbalancer.passHostHeader=true
-
-## --------------------------- mcpcotacaomutual --------------------------- ##
+        - traefik.http.routers.cotamutual.rule=Host(`cotamutual.talkhub.me`)
+        - traefik.http.routers.cotamutual.entrypoints=websecure
+        - traefik.http.routers.cotamutual.tls=true
+        - traefik.http.routers.cotamutual.tls.certresolver=letsencryptresolver
+        - traefik.http.routers.cotamutual.service=cotamutual
+        - traefik.http.services.cotamutual.loadbalancer.server.port=3000
+        - traefik.http.services.cotamutual.loadbalancer.passHostHeader=true
 
 networks:
   talkhub:
     external: true
     name: talkhub
+
+volumes:
+  cotamutual_data:

@@ -1,5 +1,5 @@
 # =============================================================================
-# mcpcotacaomutual — Servidor MCP (Mutual API v2)
+# cotamutual — Bot de cotacoes por grupo (Mutual API v2) + painel de controle
 # Build multi-stage: compila TypeScript e gera imagem enxuta de runtime.
 # =============================================================================
 
@@ -7,11 +7,9 @@
 FROM node:22-alpine AS build
 WORKDIR /app
 
-# Instala TODAS as dependencias (inclui devDependencies para compilar)
-COPY package.json package-lock.json ./
-RUN npm ci
+COPY package.json package-lock.json* ./
+RUN npm install
 
-# Copia o codigo e compila
 COPY tsconfig.json ./
 COPY src ./src
 RUN npm run build
@@ -19,18 +17,19 @@ RUN npm run build
 # ---- Estagio 2: runtime ----
 FROM node:22-alpine AS runtime
 ENV NODE_ENV=production
-ENV TRANSPORT=http
 ENV PORT=3000
+ENV DATA_DIR=/app/data
 WORKDIR /app
 
-# Instala apenas dependencias de producao
-COPY package.json package-lock.json ./
-RUN npm ci --omit=dev && npm cache clean --force
+COPY package.json package-lock.json* ./
+RUN npm install --omit=dev && npm cache clean --force
 
-# Copia o build do estagio anterior
 COPY --from=build /app/dist ./dist
+COPY public ./public
 
-# Roda como usuario nao-root (ja existente nas imagens node)
+# Diretorio persistente (toggles do painel + registro de cotacoes)
+RUN mkdir -p /app/data && chown -R node:node /app/data
+
 USER node
 
 EXPOSE 3000

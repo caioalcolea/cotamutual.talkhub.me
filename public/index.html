@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>cotamutual — Painel de Controle</title>
+<style>
+  :root {
+    --bg: #0e1117; --panel: #161b26; --panel2: #1c2230; --border: #2a3245;
+    --text: #e6e9f0; --muted: #8b94a7; --accent: #4f8cff; --ok: #2ecc71;
+    --warn: #f5a623; --danger: #e74c3c;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font: 14px/1.5 -apple-system, "Segoe UI", Roboto, sans-serif; padding: 24px; }
+  h1 { font-size: 20px; margin-bottom: 4px; }
+  h2 { font-size: 15px; margin: 28px 0 10px; color: var(--accent); text-transform: uppercase; letter-spacing: .06em; }
+  .sub { color: var(--muted); margin-bottom: 16px; }
+  .cards { display: flex; gap: 12px; flex-wrap: wrap; }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 12px 16px; min-width: 160px; }
+  .card .k { color: var(--muted); font-size: 12px; }
+  .card .v { font-size: 16px; font-weight: 600; margin-top: 2px; }
+  table { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+  th, td { padding: 9px 12px; text-align: left; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  th { background: var(--panel2); color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .05em; }
+  tr:last-child td { border-bottom: none; }
+  .tag { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 11px; font-weight: 600; }
+  .tag.ok { background: rgba(46,204,113,.15); color: var(--ok); }
+  .tag.warn { background: rgba(245,166,35,.15); color: var(--warn); }
+  .tag.off { background: rgba(139,148,167,.15); color: var(--muted); }
+  .tag.danger { background: rgba(231,76,60,.15); color: var(--danger); }
+  .switch { position: relative; display: inline-block; width: 42px; height: 22px; vertical-align: middle; }
+  .switch input { opacity: 0; width: 0; height: 0; }
+  .slider { position: absolute; cursor: pointer; inset: 0; background: #3a4358; border-radius: 22px; transition: .15s; }
+  .slider:before { content: ""; position: absolute; height: 16px; width: 16px; left: 3px; top: 3px; background: #fff; border-radius: 50%; transition: .15s; }
+  input:checked + .slider { background: var(--ok); }
+  input:checked + .slider:before { transform: translateX(20px); }
+  .switch.buy input:checked + .slider { background: var(--warn); }
+  .hint { font-size: 11px; color: var(--muted); display: block; }
+  .mono { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; }
+  .muted { color: var(--muted); }
+  #tokenBar { margin: 12px 0 4px; display: flex; gap: 8px; align-items: center; }
+  #tokenBar input { background: var(--panel); border: 1px solid var(--border); color: var(--text); border-radius: 8px; padding: 7px 10px; width: 300px; }
+  button { background: var(--accent); border: none; color: #fff; border-radius: 8px; padding: 7px 14px; cursor: pointer; font-weight: 600; }
+  button:hover { filter: brightness(1.1); }
+  #err { color: var(--danger); margin: 8px 0; min-height: 18px; }
+  details { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; margin-bottom: 6px; }
+  details summary { padding: 8px 12px; cursor: pointer; color: var(--muted); }
+  details pre { padding: 10px 14px; overflow-x: auto; font-size: 12px; color: #b9c2d4; border-top: 1px solid var(--border); }
+  .progress { background: #2a3245; border-radius: 6px; height: 8px; width: 120px; display: inline-block; vertical-align: middle; }
+  .progress > div { background: var(--accent); height: 8px; border-radius: 6px; }
+  .empty { color: var(--muted); padding: 14px; background: var(--panel); border: 1px dashed var(--border); border-radius: 10px; }
+  .banner { background: rgba(245,166,35,.1); border: 1px solid rgba(245,166,35,.4); color: var(--warn); border-radius: 10px; padding: 10px 14px; margin-top: 12px; font-size: 13px; }
+</style>
+</head>
+<body>
+  <h1>🪙 cotamutual — Painel de Controle</h1>
+  <div class="sub">Cotações por grupo com fees da Mutual · fila de cotações em tempo real</div>
+
+  <div id="tokenBar">
+    <input id="token" type="password" placeholder="Token do painel (se exigido)">
+    <button onclick="saveToken()">Salvar token</button>
+    <span class="muted" id="lastUpdate"></span>
+  </div>
+  <div id="err"></div>
+
+  <div class="cards" id="statusCards"></div>
+  <div class="banner">⚠️ <b>Compra (execução automática)</b> vem <b>sempre desligada por padrão</b> e só é ativada manualmente aqui no painel. Com a compra desligada, o /COMPRAR encerra a fila e informa que a operação será concluída manualmente por um operador da Mutual — nenhuma ordem é criada nesta fase.</div>
+
+  <h2>Canais</h2>
+  <div id="channels"></div>
+
+  <h2>Grupos</h2>
+  <div id="groups"></div>
+
+  <h2>Fila de cotações</h2>
+  <div id="queue"></div>
+
+  <h2>Merchants & Fees</h2>
+  <div id="merchants"></div>
+
+  <h2>Registro de operações (detalhes internos)</h2>
+  <div id="logs"></div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let token = localStorage.getItem("panelToken") || "";
+$("token").value = token;
+
+function saveToken() {
+  token = $("token").value.trim();
+  localStorage.setItem("panelToken", token);
+  refresh();
+}
+
+async function api(path, options = {}) {
+  const headers = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = "Bearer " + token;
+  const res = await fetch("/api/panel" + path, { ...options, headers });
+  if (!res.ok) throw new Error("HTTP " + res.status + (res.status === 401 ? " — informe o token do painel" : ""));
+  return res.json();
+}
+
+function esc(s) {
+  return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+function toggleHtml(scope, channel, groupId, feature, enabled) {
+  const cls = feature === "buy" ? "switch buy" : "switch";
+  const args = [scope, channel, groupId ?? "", feature, !enabled].map((v) => JSON.stringify(v)).join(",");
+  return `<label class="${cls}"><input type="checkbox" ${enabled ? "checked" : ""} onchange='setToggle(${args})'><span class="slider"></span></label>`;
+}
+
+async function setToggle(scope, channel, groupId, feature, enabled) {
+  try {
+    await api("/toggle", {
+      method: "POST",
+      body: JSON.stringify({ scope, channel, ...(scope === "group" ? { groupId } : {}), feature, enabled }),
+    });
+    refresh();
+  } catch (e) {
+    $("err").textContent = "Falha ao alterar toggle: " + e.message;
+  }
+}
+
+function renderOverview(data) {
+  const c = data.config;
+  $("statusCards").innerHTML = `
+    <div class="card"><div class="k">Execução de ordens</div><div class="v">${c.ordersEnabled ? '<span class="tag warn">habilitada (fase futura)</span>' : '<span class="tag off">desabilitada</span>'}</div></div>
+    <div class="card"><div class="k">Fila por cotação</div><div class="v">${c.quoteQueueMessages} msgs · ${(c.quoteQueueIntervalMs / 1000).toFixed(1)}s</div></div>
+    <div class="card"><div class="k">Ambiente de cotação</div><div class="v">${esc(c.cryptoEnv).toUpperCase()}</div></div>
+    <div class="card"><div class="k">Envio ao grupo</div><div class="v">${esc(c.outboundMode)}</div></div>`;
+
+  $("channels").innerHTML = `<table><tr><th>Canal</th><th>Cotações</th><th>Compra (execução) <span class="hint">padrão: desligado — ativação manual</span></th></tr>` +
+    data.channels.map((ch) => `<tr>
+      <td><b>${esc(ch.channel)}</b></td>
+      <td>${toggleHtml("channel", ch.channel, null, "quotes", ch.quotesEnabled)} <span class="tag ${ch.quotesEnabled ? "ok" : "off"}">${ch.quotesEnabled ? "ativas" : "manuais"}</span></td>
+      <td>${toggleHtml("channel", ch.channel, null, "buy", ch.buyEnabled)} <span class="tag ${ch.buyEnabled ? "warn" : "off"}">${ch.buyEnabled ? "ativada manualmente" : "desligada"}</span></td>
+    </tr>`).join("") + `</table>`;
+
+  if (!data.groups.length) {
+    $("groups").innerHTML = `<div class="empty">Nenhum grupo vinculado ainda. Grupos aparecem aqui a partir do linkGroups dos merchants ou da primeira mensagem recebida via webhook.</div>`;
+  } else {
+    $("groups").innerHTML = `<table><tr><th>Grupo</th><th>Canal</th><th>Merchant</th><th>Vínculo</th><th>Cotações</th><th>Compra (execução)</th></tr>` +
+      data.groups.map((g) => `<tr>
+        <td><b>${esc(g.name || g.groupId)}</b><span class="hint mono">${esc(g.groupId)}</span></td>
+        <td>${esc(g.channel)}</td>
+        <td>${g.merchantName ? esc(g.merchantName) + `<span class="hint mono">${esc(g.merchantId)}</span>` : '<span class="muted">—</span>'}</td>
+        <td>${g.linkActive === null ? '<span class="tag off">sem merchant</span>' : g.linkActive ? '<span class="tag ok">ativo</span>' : '<span class="tag danger">inativo</span>'}</td>
+        <td>${toggleHtml("group", g.channel, g.groupId, "quotes", g.quotesEnabled)} <span class="hint">${g.quotesSource === "group" ? "definido no grupo" : g.quotesSource === "channel" ? "herdado do canal" : "padrão"}</span></td>
+        <td>${toggleHtml("group", g.channel, g.groupId, "buy", g.buyEnabled)} <span class="hint">${g.buySource === "group" ? "definido no grupo" : g.buySource === "channel" ? "herdado do canal" : "padrão: desligado"}</span></td>
+      </tr>`).join("") + `</table>`;
+  }
+
+  const active = data.queue.active || [];
+  const recent = data.queue.recent || [];
+  let queueHtml = "";
+  if (active.length) {
+    queueHtml += `<table><tr><th>Grupo</th><th>Comando</th><th>Operação</th><th>Progresso</th><th>Última cotação</th></tr>` +
+      active.map((s) => `<tr>
+        <td class="mono">${esc(s.groupId)}</td>
+        <td class="mono">${esc(s.command)}</td>
+        <td>${esc(s.operation)} ${esc(s.sourceAsset)}→${esc(s.destinationAsset)}</td>
+        <td><span class="progress"><div style="width:${Math.round((s.sequence / s.total) * 100)}%"></div></span> ${s.sequence}/${s.total}</td>
+        <td>${esc(s.lastQuoteSummary || "…")}</td>
+      </tr>`).join("") + `</table>`;
+  } else {
+    queueHtml += `<div class="empty">Nenhuma fila de cotações em andamento.</div>`;
+  }
+  if (recent.length) {
+    queueHtml += `<details><summary>Filas recentes (${recent.length})</summary><pre>${esc(recent.map((s) =>
+      `${s.startedAt}  ${s.channel}/${s.groupId}  ${s.command}  ${s.sequence}/${s.total}  ${s.status}`).join("\n"))}</pre></details>`;
+  }
+  $("queue").innerHTML = queueHtml;
+}
+
+function renderMerchants(data) {
+  if (!data.merchants.length) {
+    $("merchants").innerHTML = `<div class="empty">Nenhum merchant retornado pela Mutual.</div>`;
+    return;
+  }
+  $("merchants").innerHTML = data.merchants.map((m) => {
+    const missing = m.feeAudit.filter((f) => !f.configured);
+    const auditRows = m.feeAudit.map((f) =>
+      `<tr><td>${esc(f.operation)}</td><td>${esc(f.sourceAsset)} → ${esc(f.destinationAsset)}</td>
+       <td>${f.configured ? `<span class="tag ok">ok</span> <span class="mono muted">fixa ${f.feeFixed} · % ${f.feePercentage}</span>` : '<span class="tag danger">ausente</span>'}</td></tr>`).join("");
+    const groups = (m.linkGroups || []).map((g) =>
+      `${g.active ? "🟢" : "⚪"} ${esc(g.name || g.groupId)} <span class="mono muted">(${esc(g.channel)})</span>`).join("<br>") || '<span class="muted">sem grupos</span>';
+    return `<details ${missing.length ? "open" : ""}>
+      <summary><b>${esc(m.legalName || m.id)}</b> · <span class="mono">${esc(m.id)}</span> ·
+        <span class="tag ${m.status === "active" ? "ok" : "danger"}">${esc(m.status)}</span> ·
+        ${m.feeCount} fees${missing.length ? ` · <span class="tag danger">${missing.length} pendentes</span>` : ' · <span class="tag ok">matriz completa</span>'}</summary>
+      <pre style="white-space:normal">
+        <div style="margin-bottom:8px"><b>Grupos:</b><br>${groups}</div>
+        <table><tr><th>Operação</th><th>Par</th><th>Fee</th></tr>${auditRows}</table>
+      </pre>
+    </details>`;
+  }).join("");
+}
+
+function renderLogs(data) {
+  if (!data.logs.length) {
+    $("logs").innerHTML = `<div class="empty">Nenhum registro ainda.</div>`;
+    return;
+  }
+  $("logs").innerHTML = data.logs.slice(0, 100).map((l) => {
+    const title = `${l.ts} · ${esc(l.type)} · ${esc(l.channel)}/${esc(l.groupId)}` +
+      (l.operation ? ` · ${esc(l.operation)} ${esc(l.sourceAsset)}→${esc(l.destinationAsset)}` : "") +
+      (l.sequence ? ` · ${l.sequence}/${l.totalMessages}` : "");
+    return `<details><summary>${title}</summary><pre>${esc(JSON.stringify(l, null, 2))}</pre></details>`;
+  }).join("");
+}
+
+async function refresh() {
+  try {
+    $("err").textContent = "";
+    const [overview, logs] = await Promise.all([api("/overview"), api("/logs?limit=100")]);
+    renderOverview(overview);
+    renderLogs(logs);
+    $("lastUpdate").textContent = "Atualizado às " + new Date().toLocaleTimeString("pt-BR");
+    api("/merchants").then(renderMerchants).catch(() => {});
+  } catch (e) {
+    $("err").textContent = "Erro ao carregar painel: " + e.message;
+  }
+}
+
+refresh();
+setInterval(refresh, 5000);
+</script>
+</body>
+</html>
