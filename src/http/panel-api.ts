@@ -217,7 +217,7 @@ export function createPanelRouter(deps: {
   });
 
   // Diagnostico: testa a cotacao-base de um ativo ao vivo contra a Mutual.
-  // ?asset=USDT|BTC|ETH|USDC  ?env=hml|prod (padrao: ambiente configurado)
+  // ?asset=USDT|BTC|ETH|USDC  ?env=hml|prod  ?side=buy|sell (padrao: buy)
   router.get("/diag/quote", async (req: Request, res: Response) => {
     const asset = normalizeAsset(String(req.query.asset ?? "USDT"));
     if (!CRYPTO_ASSETS.has(asset)) {
@@ -228,6 +228,7 @@ export function createPanelRouter(deps: {
     const crypto =
       envParam === "prod" ? clients.prod : envParam === "hml" ? clients.hml : clients.crypto;
     const env = envParam === "prod" || envParam === "hml" ? envParam : config.cryptoEnv;
+    const side = String(req.query.side ?? "buy").toLowerCase() === "sell" ? "sell" : "buy";
 
     const startedAt = Date.now();
     try {
@@ -235,11 +236,13 @@ export function createPanelRouter(deps: {
         { ...clients, crypto },
         asset,
         config.quoteReferenceBrlAmount,
+        side,
       );
       res.json({
         ok: true,
         asset,
         env,
+        side,
         unitPriceBRL: result.unitPriceBRL,
         elapsedMs: Date.now() - startedAt,
         rawTicker: result.rawTicker,

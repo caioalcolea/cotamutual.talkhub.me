@@ -75,8 +75,12 @@
       </select>
       <select id="diagEnv">
         <option value="">ambiente configurado</option>
-        <option value="hml">HML</option>
         <option value="prod">PROD</option>
+        <option value="hml">HML</option>
+      </select>
+      <select id="diagSide">
+        <option value="buy">compra (ask)</option>
+        <option value="sell">venda (bid)</option>
       </select>
       <button onclick="runDiag()">Testar cotação-base</button>
       <span class="hint">consulta ao vivo GET /crypto/quote na Mutual — mostra o preço ou o erro exato</span>
@@ -231,7 +235,7 @@ function renderLogs(data) {
 async function runDiag() {
   $("diagOut").textContent = "consultando a Mutual...";
   try {
-    const r = await api(`/diag/quote?asset=${$("diagAsset").value}&env=${$("diagEnv").value}`);
+    const r = await api(`/diag/quote?asset=${$("diagAsset").value}&env=${$("diagEnv").value}&side=${$("diagSide").value}`);
     $("diagOut").textContent = JSON.stringify(r, null, 2);
   } catch (e) {
     $("diagOut").textContent = "erro: " + e.message;

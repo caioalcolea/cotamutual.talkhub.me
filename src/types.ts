@@ -57,18 +57,40 @@ export interface MutualFeesResponse {
   data: MutualFee[];
 }
 
+/**
+ * O GET /crypto/quote responde em DOIS formatos, conforme ambiente/rota:
+ *
+ * Formato "quote" (ex: producao):
+ *   { quote_id, type, source_asset, target_asset, source_amount,
+ *     target_amount, price, fee_bps, provider, locked_at, expires_at }
+ *
+ * Formato "ticker" (ex: homologacao):
+ *   { buy, sell, last, high, low, open, vol, pair, date }
+ *   (buy = melhor oferta de compra/bid; sell = melhor oferta de venda/ask)
+ */
 export interface MutualQuoteData {
-  quote_id: string;
-  type: string;
-  source_asset: string;
-  target_asset: string;
-  source_amount: string;
-  target_amount: string;
-  price: string;
-  fee_bps: number;
-  provider: string;
-  locked_at: string;
-  expires_at: string;
+  // formato "quote"
+  quote_id?: string;
+  type?: string;
+  source_asset?: string;
+  target_asset?: string;
+  source_amount?: string;
+  target_amount?: string;
+  price?: string;
+  fee_bps?: number;
+  provider?: string;
+  locked_at?: string;
+  expires_at?: string;
+  // formato "ticker"
+  buy?: string;
+  sell?: string;
+  last?: string;
+  high?: string;
+  low?: string;
+  open?: string;
+  vol?: string;
+  pair?: string;
+  date?: number;
 }
 
 export interface MutualQuoteResponse {

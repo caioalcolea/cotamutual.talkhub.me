@@ -117,24 +117,39 @@ export class QuoteEngine {
     let basePrice: number;
 
     if (ctx.sourceAsset === "BRL") {
+      // Cliente COMPRA o ativo de destino -> lado "buy" (ask no formato ticker).
       const dest = await fetchUnitPriceBRL(
         this.clients,
         ctx.destinationAsset,
         ctx.amountKind === "source" ? ctx.amount : this.referenceBrlAmount,
+        "buy",
       );
       rawTickers.push(dest.rawTicker);
       basePrice = dest.unitPriceBRL;
     } else if (ctx.destinationAsset === "BRL") {
-      const source = await fetchUnitPriceBRL(this.clients, ctx.sourceAsset, this.referenceBrlAmount);
+      // Cliente VENDE o ativo de origem -> lado "sell" (bid no formato ticker).
+      const source = await fetchUnitPriceBRL(
+        this.clients,
+        ctx.sourceAsset,
+        this.referenceBrlAmount,
+        "sell",
+      );
       rawTickers.push(source.rawTicker);
       basePrice = source.unitPriceBRL;
     } else {
-      // Cripto -> cripto: taxa cruzada via BRL (duas requisicoes separadas).
-      const source = await fetchUnitPriceBRL(this.clients, ctx.sourceAsset, this.referenceBrlAmount);
+      // Cripto -> cripto: taxa cruzada via BRL (duas requisicoes separadas):
+      // vende a origem (bid) e compra o destino (ask).
+      const source = await fetchUnitPriceBRL(
+        this.clients,
+        ctx.sourceAsset,
+        this.referenceBrlAmount,
+        "sell",
+      );
       const dest = await fetchUnitPriceBRL(
         this.clients,
         ctx.destinationAsset,
         this.referenceBrlAmount,
+        "buy",
       );
       rawTickers.push(source.rawTicker, dest.rawTicker);
       basePrice = source.unitPriceBRL / dest.unitPriceBRL;
