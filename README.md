@@ -162,15 +162,27 @@ bash setup.sh
 # pergunta apenas a MUTUAL_API_KEY (ak_...); o resto vem pré-configurado
 ```
 
-**Atualizações**:
+**Atualização rápida** (mantém o stack no ar, troca só a imagem):
 
 ```bash
 cd /root/cotacaomutual.talkhub.me
 git pull   # ou copie os arquivos novos
 docker build -t cotacaomutual:latest .
 docker service update --image cotacaomutual:latest --force cotacaomutual_cotacaomutual
+```
 
-# observar
+**Redeploy limpo** (remove o stack, limpa containers/imagens do serviço, prune de dangling, rebuild sem cache e redeploy — preserva `.env`, volume de dados e as demais stacks da VPS):
+
+```bash
+cd /root/cotacaomutual.talkhub.me
+bash redeploy.sh              # com git pull automático
+bash redeploy.sh --no-pull    # sem git pull
+bash redeploy.sh --wipe-data  # também zera o volume (toggles/histórico) — pede confirmação
+```
+
+**Observar**:
+
+```bash
 docker service logs -f cotacaomutual_cotacaomutual
 ```
 
