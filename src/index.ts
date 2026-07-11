@@ -22,6 +22,8 @@ import { MerchantCache, FeeCache } from "./cache/caches.js";
 import { SettingsStore } from "./state/settings.js";
 import { QuoteLogRepository } from "./state/quote-log.js";
 import { OutboundSender } from "./channels/outbound.js";
+import { GroupResolver } from "./channels/group-resolver.js";
+import { GroupMatcher } from "./core/group-matcher.js";
 import { QuoteEngine } from "./core/engine.js";
 import { QuoteQueue } from "./queue/quote-queue.js";
 import { MessageProcessor } from "./core/processor.js";
@@ -41,7 +43,15 @@ async function main(): Promise<void> {
   const settings = new SettingsStore(config.dataDir);
   const quoteLog = new QuoteLogRepository(config.dataDir);
   const outbound = new OutboundSender(config);
-  const engine = new QuoteEngine(clients, merchantCache, feeCache, config.quoteReferenceBrlAmount);
+  const groupResolver = new GroupResolver(config);
+  const groupMatcher = new GroupMatcher(groupResolver);
+  const engine = new QuoteEngine(
+    clients,
+    merchantCache,
+    feeCache,
+    config.quoteReferenceBrlAmount,
+    groupMatcher,
+  );
   const queue = new QuoteQueue(
     engine,
     outbound,
@@ -57,6 +67,7 @@ async function main(): Promise<void> {
     outbound,
     quoteLog,
     merchantCache,
+    groupMatcher,
   );
 
   // Aquecimento do cache de merchants (nao-fatal).
@@ -98,7 +109,10 @@ async function main(): Promise<void> {
   });
 
   app.use(createWebhookRouter(config, processor));
-  app.use("/api/panel", createPanelRouter({ config, settings, merchantCache, feeCache, quoteLog, queue }));
+  app.use(
+    "/api/panel",
+    createPanelRouter({ config, settings, merchantCache, feeCache, quoteLog, queue, groupMatcher }),
+  );
 
   app.listen(config.port, () => {
     logger.info("cotamutual iniciado", {

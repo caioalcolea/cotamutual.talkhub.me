@@ -7,7 +7,7 @@
 import type { MutualClients } from "../mutual/client.js";
 import { fetchUnitPriceBRL } from "../mutual/quote.js";
 import type { MerchantCache, FeeCache } from "../cache/caches.js";
-import { findMerchantByGroup } from "./merchants.js";
+import type { GroupMatcher } from "./group-matcher.js";
 import { resolveOperation, UnsupportedOperationError } from "./operations.js";
 import { selectFee } from "./fees.js";
 import {
@@ -53,6 +53,7 @@ export class QuoteEngine {
     private readonly merchantCache: MerchantCache,
     private readonly feeCache: FeeCache,
     private readonly referenceBrlAmount: number,
+    private readonly groupMatcher: GroupMatcher,
   ) {}
 
   /**
@@ -67,7 +68,7 @@ export class QuoteEngine {
     const { channel, groupId, parsed } = params;
 
     const merchants = await this.merchantCache.getAll();
-    const merchant = findMerchantByGroup(merchants, channel, groupId);
+    const merchant = await this.groupMatcher.findMerchant(merchants, channel, groupId);
     if (!merchant) {
       throw new QuoteUserError(MESSAGES.groupNotLinked);
     }

@@ -17,7 +17,7 @@ import type { QuoteLogRepository } from "../state/quote-log.js";
 import type { SettingsStore } from "../state/settings.js";
 import type { QuoteQueue } from "../queue/quote-queue.js";
 import { QuoteEngine, QuoteUserError } from "./engine.js";
-import { findMerchantByGroup } from "./merchants.js";
+import type { GroupMatcher } from "./group-matcher.js";
 import { parseCommand } from "./parser.js";
 import { MESSAGES } from "./format.js";
 import { logger } from "../logger.js";
@@ -52,6 +52,7 @@ export class MessageProcessor {
     private readonly outbound: OutboundSender,
     private readonly quoteLog: QuoteLogRepository,
     private readonly merchantCache: MerchantCache,
+    private readonly groupMatcher: GroupMatcher,
   ) {}
 
   async handle(incoming: IncomingMessage): Promise<ProcessOutcome> {
@@ -91,7 +92,7 @@ export class MessageProcessor {
     if (parsed.kind === "buy") {
       // Grupo precisa estar vinculado a um merchant ativo.
       const merchants = await this.merchantCache.getAll().catch(() => []);
-      const merchant = findMerchantByGroup(merchants, channel, groupId);
+      const merchant = await this.groupMatcher.findMerchant(merchants, channel, groupId);
       if (!merchant) {
         await reply(MESSAGES.groupNotLinked);
         return { handled: true, action: "group-not-linked" };

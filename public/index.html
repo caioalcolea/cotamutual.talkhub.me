@@ -142,7 +142,7 @@ function renderOverview(data) {
   } else {
     $("groups").innerHTML = `<table><tr><th>Grupo</th><th>Canal</th><th>Merchant</th><th>Vínculo</th><th>Cotações</th><th>Compra (execução)</th></tr>` +
       data.groups.map((g) => `<tr>
-        <td><b>${esc(g.name || g.groupId)}</b><span class="hint mono">${esc(g.groupId)}</span></td>
+        <td><b>${esc(g.name || g.groupId)}</b><span class="hint mono">${esc(g.groupId)}</span>${g.registeredAs ? `<span class="hint mono">cadastro: ${esc(g.registeredAs)}</span>` : ""}</td>
         <td>${esc(g.channel)}</td>
         <td>${g.merchantName ? esc(g.merchantName) + `<span class="hint mono">${esc(g.merchantId)}</span>` : '<span class="muted">—</span>'}</td>
         <td>${g.linkActive === null ? '<span class="tag off">sem merchant</span>' : g.linkActive ? '<span class="tag ok">ativo</span>' : '<span class="tag danger">inativo</span>'}</td>

@@ -182,6 +182,19 @@ O stack `cotacaomutual` publica `https://cotacaomutual.talkhub.me` (entrypoint `
 * Entrada: webhook `MESSAGES_UPSERT` → `https://cotacaomutual.talkhub.me/webhook?token=<WEBHOOK_TOKEN>` (registrado pelo `setup.sh`; se falhar, registre no Evolution Manager com essa URL).
 * Saída: `sendText` na mesma instância com a `apikey` do `.env`.
 
+### Formatos aceitos no cadastro do grupo (linkGroups da Mutual)
+
+O `groupId` do vínculo pode ser cadastrado em qualquer um destes formatos:
+
+| Formato | Exemplo | Como é resolvido |
+| --- | --- | --- |
+| Link de convite | `https://chat.whatsapp.com/C34dh5vXFPJ8wgOGlE9LYG` | `GET /group/inviteInfo` na Evolution → JID (cache 6h) |
+| Código de convite | `C34dh5vXFPJ8wgOGlE9LYG` | idem |
+| JID interno | `120363429012757266@g.us` | match direto |
+| Outros canais (telegram etc.) | `23141` | match direto por channel+groupId |
+
+No painel, grupos cadastrados por convite aparecem já fundidos com o grupo real (JID), com o link original exibido como "cadastro".
+
 ---
 
 ## Estrutura

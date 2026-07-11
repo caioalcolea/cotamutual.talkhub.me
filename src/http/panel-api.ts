@@ -16,6 +16,7 @@ import type { SettingsStore } from "../state/settings.js";
 import type { QuoteLogRepository } from "../state/quote-log.js";
 import type { QuoteQueue } from "../queue/quote-queue.js";
 import { auditMerchantFees } from "../core/fees.js";
+import type { GroupMatcher } from "../core/group-matcher.js";
 import { FEATURE_DEFAULTS } from "../state/settings.js";
 import { logger } from "../logger.js";
 
@@ -39,8 +40,9 @@ export function createPanelRouter(deps: {
   feeCache: FeeCache;
   quoteLog: QuoteLogRepository;
   queue: QuoteQueue;
+  groupMatcher: GroupMatcher;
 }): Router {
-  const { config, settings, merchantCache, feeCache, quoteLog, queue } = deps;
+  const { config, settings, merchantCache, feeCache, quoteLog, queue, groupMatcher } = deps;
   const router = Router();
 
   const guard = (req: Request, res: Response, next: NextFunction): void => {
@@ -65,11 +67,14 @@ export function createPanelRouter(deps: {
     const groupEntries = settings.listGroups();
 
     // Universo de grupos: linkGroups dos merchants + grupos vistos no webhook.
+    // Convites de WhatsApp (link/codigo) sao resolvidos para o JID interno,
+    // para que a linha se funda com o grupo real e os toggles valham para ele.
     const groups = new Map<
       string,
       {
         channel: string;
         groupId: string;
+        registeredAs: string | null;
         name: string | null;
         merchantId: string | null;
         merchantName: string | null;
@@ -81,10 +86,15 @@ export function createPanelRouter(deps: {
     for (const merchant of merchants) {
       for (const link of merchant.linkGroups ?? []) {
         const channel = String(link.channel || "").toLowerCase();
-        const key = `${channel}|${String(link.groupId).trim()}`;
+        const raw = String(link.groupId).trim();
+        const canonical = await groupMatcher
+          .canonicalGroupId(channel, raw)
+          .catch(() => raw);
+        const key = `${channel}|${canonical}`;
         groups.set(key, {
           channel,
-          groupId: String(link.groupId).trim(),
+          groupId: canonical,
+          registeredAs: canonical !== raw ? raw : null,
           name: link.name ?? null,
           merchantId: merchant.id,
           merchantName: merchant.legalName ?? null,
@@ -105,6 +115,7 @@ export function createPanelRouter(deps: {
         groups.set(key, {
           channel,
           groupId,
+          registeredAs: null,
           name: entry.label ?? null,
           merchantId: null,
           merchantName: null,
