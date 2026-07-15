@@ -109,6 +109,11 @@ async function main(): Promise<void> {
     res.sendFile(join(publicDir, "index.html"));
   });
 
+  // Documentacao da operacao (diagramas, cURLs, variaveis, requisitos).
+  app.get("/docs", (_req: Request, res: Response) => {
+    res.sendFile(join(publicDir, "docs.html"));
+  });
+
   app.use(createWebhookRouter(config, processor));
   app.use(
     "/api/panel",

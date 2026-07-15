@@ -1,0 +1,411 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cotação Mutual — Documentação da Operação</title>
+<style>
+  :root {
+    --bg: #0e1117; --panel: #161b26; --panel2: #1c2230; --border: #2a3245;
+    --text: #e6e9f0; --muted: #8b94a7; --accent: #4f8cff; --ok: #2ecc71;
+    --warn: #f5a623; --danger: #e74c3c; --code: #b9c2d4;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font: 14px/1.6 -apple-system, "Segoe UI", Roboto, sans-serif; padding: 24px; max-width: 1100px; margin: 0 auto; }
+  h1 { font-size: 22px; margin-bottom: 4px; }
+  h2 { font-size: 16px; margin: 36px 0 14px; color: var(--accent); text-transform: uppercase; letter-spacing: .06em; border-bottom: 1px solid var(--border); padding-bottom: 6px; }
+  h3 { font-size: 14px; margin: 20px 0 8px; color: var(--text); }
+  p { margin: 8px 0; }
+  .sub { color: var(--muted); margin-bottom: 10px; }
+  a { color: var(--accent); text-decoration: none; }
+  .toc { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 12px 18px; margin: 16px 0; display: flex; flex-wrap: wrap; gap: 6px 18px; }
+  table { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; margin: 10px 0; }
+  th, td { padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { background: var(--panel2); color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .05em; }
+  tr:last-child td { border-bottom: none; }
+  pre { background: #10151f; border: 1px solid var(--border); border-radius: 10px; padding: 12px 16px; overflow-x: auto; font-size: 12.5px; color: var(--code); margin: 10px 0; line-height: 1.5; }
+  code { font-family: ui-monospace, Menlo, Consolas, monospace; }
+  p code, td code, li code { background: var(--panel2); padding: 1px 6px; border-radius: 5px; font-size: 12.5px; }
+  .tag { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 11px; font-weight: 600; }
+  .tag.ok { background: rgba(46,204,113,.15); color: var(--ok); }
+  .tag.warn { background: rgba(245,166,35,.15); color: var(--warn); }
+  .tag.off { background: rgba(139,148,167,.15); color: var(--muted); }
+  .tag.danger { background: rgba(231,76,60,.15); color: var(--danger); }
+  .banner { background: rgba(245,166,35,.1); border: 1px solid rgba(245,166,35,.4); color: var(--warn); border-radius: 10px; padding: 10px 14px; margin: 12px 0; font-size: 13px; }
+  ul, ol { margin: 8px 0 8px 22px; }
+  li { margin: 3px 0; }
+
+  /* ---- diagramas ---- */
+  .diagram { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 22px; margin: 14px 0; overflow-x: auto; }
+  .drow { display: flex; align-items: stretch; justify-content: center; gap: 0; flex-wrap: nowrap; min-width: 720px; }
+  .dbox { background: var(--panel2); border: 1px solid var(--border); border-radius: 10px; padding: 10px 14px; text-align: center; min-width: 130px; flex: 1; }
+  .dbox b { display: block; font-size: 13px; }
+  .dbox small { color: var(--muted); font-size: 11px; display: block; margin-top: 3px; line-height: 1.4; }
+  .dbox.hl { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+  .dbox.warn { border-color: rgba(245,166,35,.6); }
+  .darrow { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 0 8px; color: var(--accent); font-size: 18px; min-width: 74px; }
+  .darrow small { color: var(--muted); font-size: 10px; text-align: center; line-height: 1.3; }
+  .dvert { text-align: center; color: var(--accent); font-size: 18px; line-height: 1.1; padding: 4px 0; }
+  .dvert small { color: var(--muted); font-size: 10px; display: block; }
+  .steps { counter-reset: step; margin: 10px 0; }
+  .step { display: flex; gap: 12px; padding: 10px 0; border-bottom: 1px dashed var(--border); }
+  .step:last-child { border-bottom: none; }
+  .step::before { counter-increment: step; content: counter(step); background: var(--accent); color: #fff; min-width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 13px; margin-top: 2px; }
+  .step .body b { display: block; }
+  .step .body small { color: var(--muted); }
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 800px) { .cols { grid-template-columns: 1fr; } .drow { min-width: 0; flex-wrap: wrap; } }
+  .footer { color: var(--muted); font-size: 12px; margin-top: 40px; border-top: 1px solid var(--border); padding-top: 12px; }
+</style>
+</head>
+<body>
+
+<h1>🪙 Cotação Mutual — Documentação da Operação</h1>
+<div class="sub">cotacaomutual.talkhub.me · cotações por grupo com fees da Mutual · fase 1 (somente cotações) · <a href="/painel">← voltar ao painel</a></div>
+
+<div class="toc">
+  <a href="#arquitetura">1. Arquitetura</a>
+  <a href="#fluxo-cotacao">2. Fluxo da cotação</a>
+  <a href="#fluxo-compra">3. Fluxo da compra</a>
+  <a href="#curls">4. cURLs (todas as chamadas)</a>
+  <a href="#variaveis">5. Variáveis da cotação</a>
+  <a href="#formulas">6. Fórmulas e exemplo</a>
+  <a href="#requisitos">7. Requisitos técnicos</a>
+  <a href="#regras">8. Regras da fase atual</a>
+  <a href="#runbook">9. Operação (runbook)</a>
+</div>
+
+<div class="banner">⚠️ <b>Fase atual:</b> o sistema apenas COTA. <code>ORDERS_ENABLED=false</code> — nenhuma ordem é criada (o código nem possui a chamada <code>POST /crypto/orders</code>). O toggle <b>Compra (execução)</b> nasce sempre desligado e o /COMPRAR encerra a cotação com registro para conclusão <b>manual por um operador da Mutual</b>.</div>
+
+<!-- ================================================================ -->
+<h2 id="arquitetura">1. Arquitetura</h2>
+
+<div class="diagram">
+  <div class="drow">
+    <div class="dbox"><b>👥 Grupo WhatsApp</b><small>cliente envia /COTAR, /COMPRAR</small></div>
+    <div class="darrow">→<small>MESSAGES_UPSERT<br>webhook</small></div>
+    <div class="dbox"><b>📱 Evolution API v2.3.7</b><small>whatsapp.talkhub.me<br>instância <code>talkbia</code></small></div>
+    <div class="darrow">→<small>POST /webhook<br>?token=…</small></div>
+    <div class="dbox hl"><b>🪙 cotacaomutual</b><small>Node 22 · Express<br>Swarm + Traefik (talkhub)</small></div>
+    <div class="darrow">→<small>Bearer ak_ +<br>x-service-token</small></div>
+    <div class="dbox"><b>🏦 Mutual API v2</b><small>merchants + fees (prod)<br>ticker (hml*)</small></div>
+  </div>
+  <div class="dvert">↓ <small>POST /message/sendText/talkbia (apikey) — resposta ao grupo</small></div>
+  <div class="drow">
+    <div class="dbox warn"><b>🎛 Painel /painel</b><small>toggles por canal/grupo · fila ao vivo<br>merchants/fees · registro · diagnóstico</small></div>
+    <div class="darrow">↔<small>PANEL_TOKEN</small></div>
+    <div class="dbox"><b>💾 Volume cotacaomutual_data</b><small>settings.json (toggles)<br>quote-log.jsonl (auditoria)</small></div>
+    <div class="darrow">↔<small>TTL 6h</small></div>
+    <div class="dbox"><b>🔗 Resolver de grupos</b><small>convite chat.whatsapp.com/…<br>→ JID via /group/inviteInfo</small></div>
+  </div>
+</div>
+
+<p>* A fonte do preço é o <b>ticker</b> (preço de mercado <u>sem fee</u>). Hoje ele é servido pela URL <code>apis-hml</code> (<code>MUTUAL_CRYPTO_ENV=hml</code>); a URL <code>apis</code> (prod) responde no formato "quote" com spread de provider embutido, usado apenas como último recurso. Com <code>QUOTE_TICKER_FALLBACK=true</code>, o sistema prefere o ticker onde quer que ele esteja — quando a Mutual publicar o ticker em prod, basta trocar <code>MUTUAL_CRYPTO_ENV=prod</code>.</p>
+
+<!-- ================================================================ -->
+<h2 id="fluxo-cotacao">2. Fluxo da cotação (/COTAR)</h2>
+
+<div class="diagram">
+  <div class="steps">
+    <div class="step"><div class="body"><b>Mensagem chega pelo webhook</b><small>Evolution envia <code>messages.upsert</code>. Filtros: só grupos (<code>…@g.us</code>), ignora <code>fromMe</code> (anti-loop) e outros eventos.</small></div></div>
+    <div class="step"><div class="body"><b>Comando interpretado</b><small><code>/COTAR 25K USDT</code> (qtd do ativo) · <code>/COTAR 5000 BRL USDT</code> (orçamento) · <code>/COTAR 1 BTC BRL</code> (venda) · <code>/VENDER 1 BTC</code> · aliases USD/dólar→USDC, K/M, vírgula decimal.</small></div></div>
+    <div class="step"><div class="body"><b>Merchant identificado pelo grupo</b><small>Busca nos <code>linkGroups</code> dos merchants (cache 60s): JID direto, link de convite ou código — convites são resolvidos para JID na Evolution (<code>/group/inviteInfo</code>, cache 6h). Exige <code>merchant.status=active</code> e <code>linkGroup.active=true</code>.</small></div></div>
+    <div class="step"><div class="body"><b>Toggles do painel</b><small>Cotações desligadas no canal/grupo → responde que a cotação será conduzida manualmente (nunca cita "bot desligado").</small></div></div>
+    <div class="step"><div class="body"><b>Operação classificada + fee exata</b><small>BRL→cripto=<code>buy</code> · BRL→USDC e USDC→BRL e cripto→cripto=<code>conversion</code> · cripto→BRL=<code>sell</code>. Fee localizada por <code>operation+source+destination</code> (cache 60s) — <b>sem fee exata a cotação é interrompida</b> (nunca usa fee de outro par).</small></div></div>
+    <div class="step"><div class="body"><b>FILA: 10 mensagens, requisições separadas</b><small>Para cada mensagem: ticker NOVO na Mutual (nunca cacheado, preços mudam a cada segundo) → fee aplicada na direção correta → <code>sendText</code> no grupo (📊 Cotação X/10) → registro completo no painel. Intervalo padrão 3s. Nova /COTAR substitui a fila; /COMPRAR interrompe.</small></div></div>
+  </div>
+</div>
+
+<h3>Seleção do preço no ticker (lado do cliente)</h3>
+<table>
+  <tr><th>Direção</th><th>Lado do book</th><th>Campo do ticker</th></tr>
+  <tr><td>Cliente COMPRA o ativo (BRL → cripto)</td><td>ask</td><td><code>sell</code> (fallback <code>last</code>, <code>buy</code>)</td></tr>
+  <tr><td>Cliente VENDE o ativo (cripto → BRL)</td><td>bid</td><td><code>buy</code> (fallback <code>last</code>, <code>sell</code>)</td></tr>
+  <tr><td>Cripto → cripto (taxa cruzada via BRL)</td><td>vende origem no bid ÷ compra destino no ask</td><td>2 requisições por mensagem</td></tr>
+</table>
+
+<!-- ================================================================ -->
+<h2 id="fluxo-compra">3. Fluxo da compra (/COMPRAR)</h2>
+
+<div class="diagram">
+  <div class="steps">
+    <div class="step"><div class="body"><b>/COMPRAR chega (com ou sem argumentos)</b><small><code>/COMPRAR</code> · <code>/COMPRAR USDT</code> · <code>/COMPRAR 100K USDT</code>. Aliases: /ORDER, /ORDEM, /FECHAR.</small></div></div>
+    <div class="step"><div class="body"><b>Argumentos conferidos contra a cotação ativa</b><small>Ativo e quantidade precisam bater com a cotação do grupo (fila ativa ou concluída há &lt; 15 min). Divergência (ex: cotação de USDT e pedido de BTC) → NÃO confirma e orienta: "envie /COTAR &lt;valor&gt; &lt;ativo&gt;".</small></div></div>
+    <div class="step"><div class="body"><b>Cotação é TRAVADA (consumida)</b><small>Cada cotação confirma no máximo UMA operação. O próximo /COMPRAR exige uma /COTAR nova — preços mudam a cada segundo.</small></div></div>
+    <div class="step"><div class="body"><b>Registro da operação emitido no grupo</b><small>ID do grupo · ID da Transação (UUID) · Data (America/Sao_Paulo) · Tipo (COMPRA/VENDA/CONVERSÃO + ativo) · Cotação final · Montantes Total/Pendente no ativo e em BRL.</small></div></div>
+    <div class="step"><div class="body"><b>Conclusão manual</b><small>"A operação será concluída manualmente por um operador da Mutual." — nenhuma ordem é criada nesta fase. Tudo fica no Registro de operações do painel (transactionId, fees, ticker cru) para o operador dar sequência.</small></div></div>
+  </div>
+</div>
+
+<div class="cols">
+<div>
+<h3>Exemplo de registro emitido</h3>
+<pre>✅ Pedido recebido!
+
+ID do grupo:
+120363406233321709@g.us
+
+ID da Transação:
+b571d632-add7-43f8-9750-1e0b75d2f2f1
+
+📅 Data da Operação:
+11/07/2026 18:07
+
+Tipo de Operação:
+COMPRA USDT
+
+Cotação:
+1 USDT = R$ 5,16362
+
+💵 Montante em USDT:
+Total: 100.000 USDT
+Pendente: 100.000 USDT
+
+💼 Montante em BRL:
+Total: R$ 516.361,63
+Pendente: R$ 516.361,63
+
+A operação será concluída manualmente por um
+operador da Mutual. Aguarde a confirmação
+aqui no grupo. 🤝</pre>
+</div>
+<div>
+<h3>Casos de recusa</h3>
+<table>
+  <tr><th>Situação</th><th>Resposta</th></tr>
+  <tr><td>Sem cotação válida (nenhuma, expirada &gt;15min ou já consumida)</td><td>"É preciso uma cotação atualizada… envie /COTAR e confirme com /COMPRAR"</td></tr>
+  <tr><td>Argumentos divergentes da cotação ativa</td><td>"A cotação ativa é: … Para operar X, envie /COTAR X"</td></tr>
+  <tr><td>Argumentos incompreensíveis</td><td>"Não entendi os detalhes… /COMPRAR confirma a cotação ativa"</td></tr>
+  <tr><td>Grupo sem merchant ativo vinculado</td><td>"Este grupo ainda não está vinculado a um cliente habilitado para cotações."</td></tr>
+  <tr><td>Compra LIGADA no painel (+ ORDERS_ENABLED=false)</td><td>Mesmo registro + "execução automática ainda não habilitada… conclusão manual"</td></tr>
+</table>
+</div>
+</div>
+
+<!-- ================================================================ -->
+<h2 id="curls">4. cURLs — todas as chamadas externas</h2>
+
+<h3>4.1 Mutual · Merchants (produção, cache 60s)</h3>
+<pre>curl --location -G 'https://apis.mutual.app.br/api/v2/resource/merchants' \
+  --header 'Authorization: Bearer ak_SUA_CHAVE' \
+  --header 'Content-Type: application/json' \
+  --header 'x-service-token: SEU_SERVICE_TOKEN' \
+  --data-urlencode 'page=1' --data-urlencode 'limit=100'
+<span style="color:#8b94a7"># usa: id, legalName, status, linkGroups[{channel, groupId, name, active}]
+# groupId aceita: JID (…@g.us), link https://chat.whatsapp.com/CODIGO ou código puro</span></pre>
+
+<h3>4.2 Mutual · Fees do merchant (produção, cache 60s)</h3>
+<pre>curl --location -G 'https://apis.mutual.app.br/api/v2/resource/fees/merchant/org_3DXaWmcAaguU8rn2ryheTS2kRdw' \
+  --header 'Authorization: Bearer ak_SUA_CHAVE' \
+  --header 'Content-Type: application/json' \
+  --header 'x-service-token: SEU_SERVICE_TOKEN'
+<span style="color:#8b94a7"># usa: operation + sourceAsset + destinationAsset + feeFixed + feePercentage (match EXATO)</span></pre>
+
+<h3>4.3 Mutual · Cotação-base / ticker <span class="tag ok">fonte do preço</span> (NUNCA cacheada — 1 requisição por mensagem da fila)</h3>
+<pre>curl --location -G 'https://apis-hml.mutual.app.br/api/v2/crypto/quote' \
+  --header 'Authorization: Bearer ak_SUA_CHAVE' \
+  --header 'Content-Type: application/json' \
+  --header 'x-service-token: SEU_SERVICE_TOKEN' \
+  --data-urlencode 'symbol=USDT-BRL' \
+  --data-urlencode 'amount=1000' \
+  --data-urlencode 'sourceAsset=BRL' \
+  --data-urlencode 'targetAsset=USDT' \
+  --data-urlencode 'targetNetwork=TRON'
+
+<span style="color:#2ecc71"># Resposta formato TICKER (preço de mercado SEM fee — é a base da cotação):</span>
+{"error":false,"message":"Quote fetched successfully","data":{
+  "buy":"5.1635","sell":"5.1636","last":"5.1636","high":"5.1659","low":"5.1375",
+  "open":"5.1453","vol":"7768643.22971","pair":"USDT-BRL","date":1783801754080}}</pre>
+
+<h3>4.4 Mutual · Mesmo endpoint em produção <span class="tag warn">formato "quote" — só último recurso</span></h3>
+<pre><span style="color:#8b94a7"># Mesma chamada em https://apis.mutual.app.br → responde com spread de provider embutido:</span>
+{"error":false,"data":{"quote_id":"…","type":"BUY","source_asset":"BRL","target_asset":"USDT",
+  "source_amount":"1000000","target_amount":"184501.845018","price":"5.42","fee_bps":50,
+  "provider":"MERCADO_BITCOIN","locked_at":"…","expires_at":"…"}}
+<span style="color:#8b94a7"># 5,42 ≠ mercado (5,1636) → NÃO serve de base. Com QUOTE_TICKER_FALLBACK=true o sistema
+# detecta o formato e busca o ticker na URL alternativa automaticamente.</span></pre>
+
+<h3>4.5 Evolution · Envio da mensagem ao grupo</h3>
+<pre>curl -X POST 'https://whatsapp.talkhub.me/message/sendText/talkbia' \
+  --header 'apikey: SUA_EVOLUTION_API_KEY' \
+  --header 'Content-Type: application/json' \
+  --data '{"number":"120363429012757266@g.us","text":"📊 Cotação BRL → USDT (1/10)…"}'</pre>
+
+<h3>4.6 Evolution · Resolver convite → JID (cache 6h)</h3>
+<pre>curl -G 'https://whatsapp.talkhub.me/group/inviteInfo/talkbia' \
+  --header 'apikey: SUA_EVOLUTION_API_KEY' \
+  --data-urlencode 'inviteCode=C34dh5vXFPJ8wgOGlE9LYG'
+<span style="color:#8b94a7"># resposta: { "id": "120363429012757266@g.us", "subject": "teste", … }</span></pre>
+
+<h3>4.7 Evolution · Registro do webhook (feito pelo setup.sh)</h3>
+<pre>curl -X POST 'https://whatsapp.talkhub.me/webhook/set/talkbia' \
+  --header 'apikey: SUA_EVOLUTION_API_KEY' \
+  --header 'Content-Type: application/json' \
+  --data '{"webhook":{"enabled":true,
+    "url":"https://cotacaomutual.talkhub.me/webhook?token=SEU_WEBHOOK_TOKEN",
+    "webhookByEvents":false,"webhookBase64":false,"events":["MESSAGES_UPSERT"]}}'</pre>
+
+<h3>4.8 Nosso serviço · Webhook de entrada (contrato genérico p/ testes)</h3>
+<pre>curl -X POST 'https://cotacaomutual.talkhub.me/webhook?token=SEU_WEBHOOK_TOKEN' \
+  --header 'Content-Type: application/json' \
+  --data '{"channel":"whatsapp","groupId":"120363429012757266@g.us","text":"/COTAR 25K USDT"}'</pre>
+
+<h3>4.9 Nosso serviço · API do painel</h3>
+<pre><span style="color:#8b94a7"># visão geral (canais, grupos, toggles, filas)</span>
+curl 'https://cotacaomutual.talkhub.me/api/panel/overview' -H 'Authorization: Bearer SEU_PANEL_TOKEN'
+
+<span style="color:#8b94a7"># liga/desliga bots (compra nasce SEMPRE desligada; ativação manual)</span>
+curl -X POST 'https://cotacaomutual.talkhub.me/api/panel/toggle' \
+  -H 'Authorization: Bearer SEU_PANEL_TOKEN' -H 'Content-Type: application/json' \
+  -d '{"scope":"group","channel":"whatsapp","groupId":"1203…@g.us","feature":"buy","enabled":true}'
+
+<span style="color:#8b94a7"># registro detalhado + diagnóstico da cotação-base ao vivo</span>
+curl 'https://cotacaomutual.talkhub.me/api/panel/logs?limit=100' -H 'Authorization: Bearer SEU_PANEL_TOKEN'
+curl 'https://cotacaomutual.talkhub.me/api/panel/diag/quote?asset=USDT&side=buy&env=hml' -H 'Authorization: Bearer SEU_PANEL_TOKEN'</pre>
+
+<!-- ================================================================ -->
+<h2 id="variaveis">5. Variáveis utilizadas na cotação</h2>
+
+<h3>5.1 Parâmetros da requisição de ticker</h3>
+<table>
+  <tr><th>Parâmetro</th><th>Valor</th><th>Origem</th></tr>
+  <tr><td><code>symbol</code></td><td><code>{ATIVO}-BRL</code> (ex: USDT-BRL, BTC-BRL)</td><td>ativo da perna cotada</td></tr>
+  <tr><td><code>amount</code></td><td>orçamento em BRL (comando <code>… BRL …</code>) ou <code>QUOTE_REFERENCE_BRL_AMOUNT</code> (1000) quando o usuário informa quantidade do ativo</td><td>comando do grupo</td></tr>
+  <tr><td><code>sourceAsset</code></td><td><code>BRL</code></td><td>fixo (referência)</td></tr>
+  <tr><td><code>targetAsset</code></td><td><code>BTC · ETH · USDT · USDC</code></td><td>comando (após normalização de aliases)</td></tr>
+  <tr><td><code>targetNetwork</code></td><td>BTC→<code>BITCOIN</code> · ETH→<code>ERC20</code> · USDT→<code>TRON</code> · USDC→<code>ERC20</code></td><td><code>src/constants.ts</code></td></tr>
+</table>
+
+<h3>5.2 Variáveis de ambiente (.env)</h3>
+<table>
+  <tr><th>Variável</th><th>Valor atual</th><th>Papel na cotação</th></tr>
+  <tr><td><code>MUTUAL_API_KEY</code> / <code>MUTUAL_SERVICE_TOKEN</code></td><td><span class="tag off">segredo</span></td><td>autenticação em TODAS as chamadas à Mutual</td></tr>
+  <tr><td><code>MUTUAL_PROD_BASE_URL</code></td><td>https://apis.mutual.app.br</td><td>merchants + fees (sempre) · quote se env=prod</td></tr>
+  <tr><td><code>MUTUAL_HML_BASE_URL</code></td><td>https://apis-hml.mutual.app.br</td><td>ticker (fonte atual do preço)</td></tr>
+  <tr><td><code>MUTUAL_CRYPTO_ENV</code></td><td><span class="tag ok">hml</span> (interino)</td><td>ambiente consultado primeiro no /crypto/quote</td></tr>
+  <tr><td><code>QUOTE_TICKER_FALLBACK</code></td><td>true</td><td>se vier formato "quote" (spread), busca o ticker na URL alternativa</td></tr>
+  <tr><td><code>QUOTE_QUEUE_MESSAGES</code></td><td>10</td><td>mensagens por fila de cotação</td></tr>
+  <tr><td><code>QUOTE_QUEUE_INTERVAL_MS</code></td><td>3000</td><td>intervalo entre mensagens (preço novo a cada uma)</td></tr>
+  <tr><td><code>QUOTE_REFERENCE_BRL_AMOUNT</code></td><td>1000</td><td>amount de referência p/ descobrir preço unitário</td></tr>
+  <tr><td><code>MERCHANT_CACHE_TTL_MS</code> / <code>FEE_CACHE_TTL_MS</code></td><td>60000</td><td>cache de merchants/fees (ticker NUNCA cacheia)</td></tr>
+  <tr><td><code>ORDERS_ENABLED</code></td><td><span class="tag danger">false</span></td><td>trava absoluta: nenhuma ordem nesta fase</td></tr>
+  <tr><td><code>OUTBOUND_MODE</code> + <code>EVOLUTION_BASE_URL/INSTANCE/API_KEY</code></td><td>evolution · talkbia</td><td>entrega das mensagens ao grupo</td></tr>
+  <tr><td><code>WEBHOOK_TOKEN</code> / <code>PANEL_TOKEN</code></td><td><span class="tag off">gerados no setup.sh</span></td><td>proteção do webhook e do painel</td></tr>
+  <tr><td><code>DATA_DIR</code></td><td>/app/data (volume)</td><td>toggles do painel + quote-log.jsonl</td></tr>
+</table>
+
+<h3>5.3 Variáveis do cálculo (por mensagem da fila)</h3>
+<table>
+  <tr><th>Variável</th><th>De onde vem</th></tr>
+  <tr><td><code>baseUnitPrice</code></td><td>ticker: <code>sell</code>(ask) na compra · <code>buy</code>(bid) na venda · fallback <code>last</code> → razão <code>source_amount/target_amount</code> → <code>price</code></td></tr>
+  <tr><td><code>feePercentage</code> · <code>feeFixed</code></td><td>fee EXATA do merchant (operation+source+destination)</td></tr>
+  <tr><td><code>quantity</code> / <code>amountBRL</code></td><td>comando do grupo (25K → 25.000; aceita K/M e vírgula)</td></tr>
+  <tr><td><code>finalUnitPrice</code> · <code>finalTotal</code> / <code>netAmount</code></td><td>resultado das fórmulas abaixo — <b>único dado exibido no grupo</b></td></tr>
+</table>
+
+<!-- ================================================================ -->
+<h2 id="formulas">6. Fórmulas e exemplo numérico</h2>
+
+<pre>feeTotal = (base × feePercentage) + feeFixed
+
+① Quantidade do ativo (/COTAR 25K USDT — cliente paga mais):
+     baseTotal  = quantidade × baseUnitPrice
+     finalTotal = baseTotal + feeTotal(baseTotal)
+
+② Orçamento em BRL (/COTAR 5000 BRL USDT — fee sai do orçamento):
+     baseAvailable = (amountBRL − feeFixed) / (1 + feePercentage)
+     quantity      = baseAvailable / baseUnitPrice
+
+③ Venda/conversão da origem (/COTAR 1 BTC BRL — cliente recebe menos):
+     gross = quantidade × baseUnitPrice
+     net   = gross − feeTotal(gross)</pre>
+
+<h3>Exemplo real (fee do merchant: fixa 0,0001 + percentual 0,0001 = 0,01%)</h3>
+<table>
+  <tr><th>Passo</th><th>Valor</th></tr>
+  <tr><td>Comando no grupo</td><td><code>/COTAR 1K USDT</code></td></tr>
+  <tr><td>Ticker (ask, sem fee)</td><td>1 USDT = R$ 5,1631</td></tr>
+  <tr><td>baseTotal = 1.000 × 5,1631</td><td>R$ 5.163,10</td></tr>
+  <tr><td>fee % = 5.163,10 × 0,0001</td><td>R$ 0,516310</td></tr>
+  <tr><td>fee fixa</td><td>R$ 0,0001</td></tr>
+  <tr><td><b>finalTotal</b> (mostrado no grupo)</td><td><b>R$ 5.163,62</b> → 1 USDT = R$ 5,16362</td></tr>
+</table>
+<p class="sub">O grupo vê apenas a cotação final. feePercentage, feeFixed, preço-base sem fee, merchantId e ticker cru ficam SÓ no painel/registro (<code>data/quote-log.jsonl</code>).</p>
+
+<!-- ================================================================ -->
+<h2 id="requisitos">7. Requisitos técnicos</h2>
+
+<div class="cols">
+<div>
+<h3>Infraestrutura</h3>
+<table>
+  <tr><td>VPS</td><td>Docker Swarm ativo (nó manager)</td></tr>
+  <tr><td>Rede</td><td>overlay externa <code>talkhub</code></td></tr>
+  <tr><td>Proxy</td><td>Traefik v3 · entrypoint <code>websecure</code> · resolver <code>letsencryptresolver</code></td></tr>
+  <tr><td>DNS</td><td><code>cotacaomutual.talkhub.me</code> → IP da VPS</td></tr>
+  <tr><td>Imagem</td><td><code>cotacaomutual:latest</code> (build local, Node 22-alpine, multi-stage)</td></tr>
+  <tr><td>Volume</td><td><code>cotacaomutual_data</code> (externo) → /app/data</td></tr>
+  <tr><td>Recursos</td><td>0.5 CPU · 512 MB · 1 réplica</td></tr>
+  <tr><td>Healthcheck</td><td>GET /health a cada 30s</td></tr>
+  <tr><td>Portas</td><td>nenhuma publicada no host (Traefik → :3000 interno)</td></tr>
+</table>
+</div>
+<div>
+<h3>Integrações e credenciais</h3>
+<table>
+  <tr><td>Mutual API v2</td><td>chave <code>ak_…</code> + <code>x-service-token</code> válidos p/ prod e hml</td></tr>
+  <tr><td>Evolution API</td><td>v2.3.7 · instância <code>talkbia</code> conectada · apikey</td></tr>
+  <tr><td>Webhook</td><td>MESSAGES_UPSERT → /webhook?token=… (registrado pelo setup.sh)</td></tr>
+  <tr><td>Cadastro do grupo</td><td>merchant ativo + linkGroup ativo (JID, link ou código de convite)</td></tr>
+  <tr><td>Fees do merchant</td><td>matriz por par cadastrada na Mutual (sem fee = sem cotação)</td></tr>
+  <tr><td>Fuso</td><td>TZ=America/Sao_Paulo (datas do registro)</td></tr>
+  <tr><td>Node/dev</td><td>Node ≥ 20 · <code>npm run build</code> · <code>npm test</code> (44 testes)</td></tr>
+</table>
+</div>
+</div>
+
+<!-- ================================================================ -->
+<h2 id="regras">8. Regras da fase atual</h2>
+<ol>
+  <li><b>Só cotações.</b> <code>ORDERS_ENABLED=false</code>; a chamada de criação de ordem não existe no código.</li>
+  <li><b>Compra (execução) sempre nasce desligada</b> — ativação exclusivamente manual no painel, por canal ou grupo.</li>
+  <li><b>Fila de 10 cotações por comando</b>, cada mensagem com requisição própria (sem cache de ticker), interrompível pelo /COMPRAR.</li>
+  <li><b>1 cotação = 1 confirmação.</b> O /COMPRAR trava (consome) a cotação; nova confirmação exige /COTAR novo. Validade da cotação para confirmação: 15 min.</li>
+  <li><b>Argumentos do /COMPRAR são conferidos</b> (ativo e quantidade) contra a cotação ativa — divergência não confirma.</li>
+  <li><b>Fee exata obrigatória</b> por operation+source+destination — sem fallback silencioso.</li>
+  <li><b>Nunca citar estado do bot</b> — recursos inativos respondem apenas que a operação será concluída manualmente por um operador da Mutual.</li>
+  <li><b>Grupo vê só a cotação final</b>; todos os internos vão para o painel e o quote-log (auditoria completa por transactionId).</li>
+</ol>
+
+<!-- ================================================================ -->
+<h2 id="runbook">9. Operação (runbook)</h2>
+<pre><span style="color:#8b94a7"># Primeiro deploy (pergunta só a MUTUAL_API_KEY; gera tokens; registra webhook)</span>
+cd /root/cotacaomutual.talkhub.me && bash setup.sh
+
+<span style="color:#8b94a7"># Atualização rápida</span>
+git pull && docker build -t cotacaomutual:latest . && \
+docker service update --image cotacaomutual:latest --force cotacaomutual_cotacaomutual
+
+<span style="color:#8b94a7"># Redeploy limpo (remove stack, limpa imagens do serviço, rebuild --no-cache, preserva .env e volume)</span>
+bash redeploy.sh            # flags: --no-pull · --wipe-data · --yes
+
+<span style="color:#8b94a7"># Observabilidade</span>
+docker service logs -f cotacaomutual_cotacaomutual
+https://cotacaomutual.talkhub.me/painel     <span style="color:#8b94a7"># toggles, fila ao vivo, merchants/fees, registro, diagnóstico</span>
+https://cotacaomutual.talkhub.me/health</pre>
+
+<table>
+  <tr><th>Sintoma</th><th>Causa provável / ação</th></tr>
+  <tr><td>"grupo não vinculado"</td><td>linkGroup ausente/inativo na Mutual, merchant inativo, ou convite não resolvível (registre o JID direto). Ver logs: <code>Falha ao resolver convite</code>.</td></tr>
+  <tr><td>"não há taxa configurada"</td><td>Falta a fee EXATA do par no merchant — painel → Merchants & Fees mostra os pendentes.</td></tr>
+  <tr><td>"não foi possível gerar a cotação"</td><td>Painel → Diagnóstico (mostra o erro HTTP exato da Mutual) e Registro de operações.</td></tr>
+  <tr><td>Preço divergente do mercado</td><td>Conferir <code>priceSource</code> no diagnóstico: deve ser <code>ticker</code>/<code>ticker-fallback</code>, nunca <code>quote</code>.</td></tr>
+  <tr><td>Bot não responde no grupo</td><td>Webhook na Evolution (URL/token), instância conectada, <code>docker service logs</code>.</td></tr>
+</table>
+
+<div class="footer">
+  cotacaomutual v2 · Fase 1 — cotações por grupo com fees da Mutual · Compra/execução automática desabilitada (conclusão manual por operador da Mutual) · Documentação gerada em 11/07/2026 · <a href="/painel">painel</a>
+</div>
+
+</body>
+</html>

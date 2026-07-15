@@ -2,6 +2,8 @@
 
 Serviço que monitora mensagens de grupos (WhatsApp via **Evolution API v2**), identifica o **merchant pelo grupo**, interpreta comandos iniciados por `/`, consulta a **cotação-base** e as **fees do merchant** na Mutual API v2, aplica fee fixa + percentual e responde no grupo — com **painel visual de controle** em `https://cotacaomutual.talkhub.me/painel`.
 
+> 📚 **Documentação visual completa da operação** (diagramas, cURLs, variáveis da cotação, fórmulas, requisitos técnicos e runbook): `https://cotacaomutual.talkhub.me/docs` — fonte em [`public/docs.html`](./public/docs.html).
+
 > O servidor MCP original (camada fina sobre a Mutual API) continua intacto em [`mcpcotacaomutual.talkhub.me/`](./mcpcotacaomutual.talkhub.me/) — é um serviço separado, com deploy próprio.
 
 ---
