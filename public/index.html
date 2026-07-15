@@ -4,58 +4,92 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Cotação Mutual — Painel de Controle</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23fac547'/%3E%3Ctext x='32' y='44' font-family='Arial' font-size='34' font-weight='bold' fill='%231a2447' text-anchor='middle'%3EM%3C/text%3E%3C/svg%3E">
 <style>
+  /* ---- Identidade Mutual: navy #1a2447 + dourado #fac547, minimal claro ---- */
   :root {
-    --bg: #0e1117; --panel: #161b26; --panel2: #1c2230; --border: #2a3245;
-    --text: #e6e9f0; --muted: #8b94a7; --accent: #4f8cff; --ok: #2ecc71;
-    --warn: #f5a623; --danger: #e74c3c;
+    --navy: #1a2447; --navy-deep: #0b163f; --ink: #101828;
+    --gold: #fac547; --gold-2: #f0bb3b; --gold-soft: #fdf4d9;
+    --bg: #f6f7f9; --card: #ffffff; --border: #e7e9ee; --border-2: #eef0f4;
+    --text: #1a2447; --muted: #6a7282; --muted-2: #99a1af;
+    --ok: #17864b; --ok-bg: #e9f7ef;
+    --warn: #93700f; --warn-bg: #fdf4d9;
+    --danger: #d64550; --danger-bg: #ffeef0;
+    --shadow: 0 1px 2px rgba(16,24,40,.05), 0 1px 3px rgba(16,24,40,.04);
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { background: var(--bg); color: var(--text); font: 14px/1.5 -apple-system, "Segoe UI", Roboto, sans-serif; padding: 24px; }
-  h1 { font-size: 20px; margin-bottom: 4px; }
-  h2 { font-size: 15px; margin: 28px 0 10px; color: var(--accent); text-transform: uppercase; letter-spacing: .06em; }
-  .sub { color: var(--muted); margin-bottom: 16px; }
-  .cards { display: flex; gap: 12px; flex-wrap: wrap; }
-  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 12px 16px; min-width: 160px; }
-  .card .k { color: var(--muted); font-size: 12px; }
-  .card .v { font-size: 16px; font-weight: 600; margin-top: 2px; }
-  table { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
-  th, td { padding: 9px 12px; text-align: left; border-bottom: 1px solid var(--border); vertical-align: middle; }
-  th { background: var(--panel2); color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .05em; }
+  body { background: var(--bg); color: var(--text); font: 14px/1.55 ui-sans-serif, -apple-system, "Segoe UI", Inter, Roboto, sans-serif; padding: 28px 24px 60px; max-width: 1180px; margin: 0 auto; }
+
+  header { display: flex; align-items: center; gap: 14px; margin-bottom: 22px; flex-wrap: wrap; }
+  .logo { width: 42px; height: 42px; border-radius: 12px; background: var(--gold); color: var(--navy); display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 20px; box-shadow: var(--shadow); }
+  h1 { font-size: 19px; font-weight: 700; letter-spacing: -.01em; }
+  h1 small { display: block; font-size: 12.5px; font-weight: 400; color: var(--muted); margin-top: 1px; }
+  .navlink { margin-left: auto; background: var(--card); border: 1px solid var(--border); color: var(--navy); padding: 8px 14px; border-radius: 999px; font-size: 12.5px; font-weight: 600; text-decoration: none; box-shadow: var(--shadow); }
+  .navlink:hover { border-color: var(--gold-2); }
+
+  h2 { display: flex; align-items: center; gap: 10px; font-size: 12px; font-weight: 700; margin: 34px 0 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .1em; }
+  h2::before { content: ""; width: 18px; height: 4px; border-radius: 4px; background: var(--gold); }
+
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 14px 16px; box-shadow: var(--shadow); }
+  .card .k { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .07em; font-weight: 600; }
+  .card .v { font-size: 15px; font-weight: 700; margin-top: 4px; color: var(--navy); }
+
+  table { width: 100%; border-collapse: collapse; background: var(--card); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; box-shadow: var(--shadow); }
+  th, td { padding: 11px 14px; text-align: left; border-bottom: 1px solid var(--border-2); vertical-align: middle; }
+  th { background: #fafbfc; color: var(--muted); font-size: 10.5px; text-transform: uppercase; letter-spacing: .08em; font-weight: 700; }
   tr:last-child td { border-bottom: none; }
-  .tag { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 11px; font-weight: 600; }
-  .tag.ok { background: rgba(46,204,113,.15); color: var(--ok); }
-  .tag.warn { background: rgba(245,166,35,.15); color: var(--warn); }
-  .tag.off { background: rgba(139,148,167,.15); color: var(--muted); }
-  .tag.danger { background: rgba(231,76,60,.15); color: var(--danger); }
-  .switch { position: relative; display: inline-block; width: 42px; height: 22px; vertical-align: middle; }
+  tbody tr:hover td, table tr:hover td { background: #fcfcfd; }
+
+  .tag { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 600; }
+  .tag.ok { background: var(--ok-bg); color: var(--ok); }
+  .tag.warn { background: var(--warn-bg); color: var(--warn); }
+  .tag.off { background: #f1f2f5; color: var(--muted); }
+  .tag.danger { background: var(--danger-bg); color: var(--danger); }
+
+  .switch { position: relative; display: inline-block; width: 40px; height: 22px; vertical-align: middle; }
   .switch input { opacity: 0; width: 0; height: 0; }
-  .slider { position: absolute; cursor: pointer; inset: 0; background: #3a4358; border-radius: 22px; transition: .15s; }
-  .slider:before { content: ""; position: absolute; height: 16px; width: 16px; left: 3px; top: 3px; background: #fff; border-radius: 50%; transition: .15s; }
-  input:checked + .slider { background: var(--ok); }
-  input:checked + .slider:before { transform: translateX(20px); }
-  .switch.buy input:checked + .slider { background: var(--warn); }
-  .hint { font-size: 11px; color: var(--muted); display: block; }
+  .slider { position: absolute; cursor: pointer; inset: 0; background: #d8dce4; border-radius: 22px; transition: .18s; }
+  .slider:before { content: ""; position: absolute; height: 16px; width: 16px; left: 3px; top: 3px; background: #fff; border-radius: 50%; transition: .18s; box-shadow: 0 1px 2px rgba(16,24,40,.25); }
+  input:checked + .slider { background: var(--navy); }
+  input:checked + .slider:before { transform: translateX(18px); }
+  .switch.buy input:checked + .slider { background: var(--gold-2); }
+
+  .hint { font-size: 11px; color: var(--muted-2); display: block; font-weight: 400; text-transform: none; letter-spacing: 0; }
   .mono { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; }
   .muted { color: var(--muted); }
-  #tokenBar { margin: 12px 0 4px; display: flex; gap: 8px; align-items: center; }
-  #tokenBar input { background: var(--panel); border: 1px solid var(--border); color: var(--text); border-radius: 8px; padding: 7px 10px; width: 300px; }
-  select { background: var(--panel); border: 1px solid var(--border); color: var(--text); border-radius: 8px; padding: 7px 10px; }
-  button { background: var(--accent); border: none; color: #fff; border-radius: 8px; padding: 7px 14px; cursor: pointer; font-weight: 600; }
-  button:hover { filter: brightness(1.1); }
-  #err { color: var(--danger); margin: 8px 0; min-height: 18px; }
-  details { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; margin-bottom: 6px; }
-  details summary { padding: 8px 12px; cursor: pointer; color: var(--muted); }
-  details pre { padding: 10px 14px; overflow-x: auto; font-size: 12px; color: #b9c2d4; border-top: 1px solid var(--border); }
-  .progress { background: #2a3245; border-radius: 6px; height: 8px; width: 120px; display: inline-block; vertical-align: middle; }
-  .progress > div { background: var(--accent); height: 8px; border-radius: 6px; }
-  .empty { color: var(--muted); padding: 14px; background: var(--panel); border: 1px dashed var(--border); border-radius: 10px; }
-  .banner { background: rgba(245,166,35,.1); border: 1px solid rgba(245,166,35,.4); color: var(--warn); border-radius: 10px; padding: 10px 14px; margin-top: 12px; font-size: 13px; }
+
+  #tokenBar { margin: 0 0 6px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  #tokenBar input { background: var(--card); border: 1px solid var(--border); color: var(--text); border-radius: 10px; padding: 8px 12px; width: 290px; box-shadow: var(--shadow); }
+  #tokenBar input:focus, select:focus { outline: 2px solid var(--gold); outline-offset: 1px; border-color: transparent; }
+  select { background: var(--card); border: 1px solid var(--border); color: var(--text); border-radius: 10px; padding: 8px 12px; box-shadow: var(--shadow); }
+  button { background: var(--navy); border: none; color: #fff; border-radius: 10px; padding: 8px 16px; cursor: pointer; font-weight: 600; font-size: 13px; box-shadow: var(--shadow); transition: .15s; }
+  button:hover { background: var(--navy-deep); }
+  #err { color: var(--danger); margin: 8px 0; min-height: 18px; font-size: 13px; }
+
+  details { background: var(--card); border: 1px solid var(--border); border-radius: 12px; margin-bottom: 8px; box-shadow: var(--shadow); overflow: hidden; }
+  details summary { padding: 10px 14px; cursor: pointer; color: var(--muted); font-size: 12.5px; }
+  details summary:hover { color: var(--navy); }
+  details summary b { color: var(--navy); }
+  details pre { padding: 12px 16px; overflow-x: auto; font-size: 12px; color: var(--ink); border-top: 1px solid var(--border-2); background: #fafbfc; }
+
+  .progress { background: #edf0f5; border-radius: 6px; height: 8px; width: 120px; display: inline-block; vertical-align: middle; overflow: hidden; }
+  .progress > div { background: var(--gold-2); height: 8px; border-radius: 6px; transition: width .4s; }
+
+  .empty { color: var(--muted); padding: 18px; background: var(--card); border: 1px dashed var(--border); border-radius: 14px; text-align: center; }
+  .banner { background: var(--gold-soft); border: 1px solid #f2ddaa; color: #6d5410; border-radius: 14px; padding: 12px 16px; margin-top: 16px; font-size: 13px; line-height: 1.6; }
+  .banner b { color: #52400c; }
+
+  #diagOut:empty { display: none; }
+  #diagOut { margin-top: 12px; white-space: pre-wrap; background: var(--ink); color: #cdd5e0; border-radius: 10px; padding: 12px 14px; }
 </style>
 </head>
 <body>
-  <h1>🪙 Cotação Mutual — Painel de Controle</h1>
-  <div class="sub">Cotações por grupo com fees da Mutual · fila de cotações em tempo real · <a href="/docs" style="color:var(--accent)">📚 documentação da operação</a></div>
+  <header>
+    <div class="logo">M</div>
+    <h1>Cotação Mutual<small>Painel de controle · cotações por grupo em tempo real</small></h1>
+    <a class="navlink" href="/docs">📚 Documentação da operação</a>
+  </header>
 
   <div id="tokenBar">
     <input id="token" type="password" placeholder="Token do painel (se exigido)">
@@ -85,7 +119,7 @@
       <button onclick="runDiag()">Testar cotação-base</button>
       <span class="hint">consulta ao vivo GET /crypto/quote na Mutual — mostra o preço ou o erro exato</span>
     </div>
-    <pre id="diagOut" class="mono" style="margin-top:10px; white-space:pre-wrap; color:#b9c2d4"></pre>
+    <pre id="diagOut" class="mono"></pre>
   </div>
 
   <h2>Canais</h2>

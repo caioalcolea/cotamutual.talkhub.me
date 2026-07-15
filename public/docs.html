@@ -4,64 +4,91 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Cotação Mutual — Documentação da Operação</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23fac547'/%3E%3Ctext x='32' y='44' font-family='Arial' font-size='34' font-weight='bold' fill='%231a2447' text-anchor='middle'%3EM%3C/text%3E%3C/svg%3E">
 <style>
+  /* ---- Identidade Mutual: navy #1a2447 + dourado #fac547, minimal claro ---- */
   :root {
-    --bg: #0e1117; --panel: #161b26; --panel2: #1c2230; --border: #2a3245;
-    --text: #e6e9f0; --muted: #8b94a7; --accent: #4f8cff; --ok: #2ecc71;
-    --warn: #f5a623; --danger: #e74c3c; --code: #b9c2d4;
+    --navy: #1a2447; --navy-deep: #0b163f; --ink: #101828;
+    --gold: #fac547; --gold-2: #f0bb3b; --gold-soft: #fdf4d9;
+    --bg: #f6f7f9; --card: #ffffff; --border: #e7e9ee; --border-2: #eef0f4;
+    --text: #1a2447; --muted: #6a7282; --muted-2: #99a1af;
+    --ok: #17864b; --ok-bg: #e9f7ef;
+    --warn: #93700f; --warn-bg: #fdf4d9;
+    --danger: #d64550; --danger-bg: #ffeef0;
+    --code: #cdd5e0;
+    --shadow: 0 1px 2px rgba(16,24,40,.05), 0 1px 3px rgba(16,24,40,.04);
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { background: var(--bg); color: var(--text); font: 14px/1.6 -apple-system, "Segoe UI", Roboto, sans-serif; padding: 24px; max-width: 1100px; margin: 0 auto; }
-  h1 { font-size: 22px; margin-bottom: 4px; }
-  h2 { font-size: 16px; margin: 36px 0 14px; color: var(--accent); text-transform: uppercase; letter-spacing: .06em; border-bottom: 1px solid var(--border); padding-bottom: 6px; }
-  h3 { font-size: 14px; margin: 20px 0 8px; color: var(--text); }
+  body { background: var(--bg); color: var(--text); font: 14px/1.65 ui-sans-serif, -apple-system, "Segoe UI", Inter, Roboto, sans-serif; padding: 28px 24px 60px; max-width: 1100px; margin: 0 auto; }
+
+  header { display: flex; align-items: center; gap: 14px; margin-bottom: 16px; flex-wrap: wrap; }
+  .logo { width: 42px; height: 42px; border-radius: 12px; background: var(--gold); color: var(--navy); display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 20px; box-shadow: var(--shadow); }
+  h1 { font-size: 19px; font-weight: 700; letter-spacing: -.01em; }
+  h1 small { display: block; font-size: 12.5px; font-weight: 400; color: var(--muted); margin-top: 1px; }
+  .navlink { margin-left: auto; background: var(--card); border: 1px solid var(--border); color: var(--navy); padding: 8px 14px; border-radius: 999px; font-size: 12.5px; font-weight: 600; text-decoration: none; box-shadow: var(--shadow); }
+  .navlink:hover { border-color: var(--gold-2); }
+
+  h2 { display: flex; align-items: center; gap: 10px; font-size: 12px; font-weight: 700; margin: 40px 0 14px; color: var(--muted); text-transform: uppercase; letter-spacing: .1em; }
+  h2::before { content: ""; width: 18px; height: 4px; border-radius: 4px; background: var(--gold); }
+  h3 { font-size: 14px; margin: 22px 0 8px; color: var(--navy); font-weight: 700; }
   p { margin: 8px 0; }
   .sub { color: var(--muted); margin-bottom: 10px; }
-  a { color: var(--accent); text-decoration: none; }
-  .toc { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 12px 18px; margin: 16px 0; display: flex; flex-wrap: wrap; gap: 6px 18px; }
-  table { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; margin: 10px 0; }
-  th, td { padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--border); vertical-align: top; }
-  th { background: var(--panel2); color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .05em; }
+  a { color: var(--navy); text-decoration: none; border-bottom: 1px solid var(--gold-2); }
+  a:hover { color: var(--navy-deep); }
+
+  .toc { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 12px 14px; margin: 16px 0; display: flex; flex-wrap: wrap; gap: 8px; box-shadow: var(--shadow); }
+  .toc a { background: #f1f3f7; border: none; border-radius: 999px; padding: 5px 13px; font-size: 12px; font-weight: 600; color: var(--navy); }
+  .toc a:hover { background: var(--gold-soft); }
+
+  table { width: 100%; border-collapse: collapse; background: var(--card); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; margin: 10px 0; box-shadow: var(--shadow); }
+  th, td { padding: 9px 13px; text-align: left; border-bottom: 1px solid var(--border-2); vertical-align: top; }
+  th { background: #fafbfc; color: var(--muted); font-size: 10.5px; text-transform: uppercase; letter-spacing: .08em; font-weight: 700; }
   tr:last-child td { border-bottom: none; }
-  pre { background: #10151f; border: 1px solid var(--border); border-radius: 10px; padding: 12px 16px; overflow-x: auto; font-size: 12.5px; color: var(--code); margin: 10px 0; line-height: 1.5; }
+
+  pre { background: var(--ink); border: none; border-radius: 12px; padding: 14px 18px; overflow-x: auto; font-size: 12.5px; color: var(--code); margin: 10px 0; line-height: 1.55; box-shadow: var(--shadow); }
   code { font-family: ui-monospace, Menlo, Consolas, monospace; }
-  p code, td code, li code { background: var(--panel2); padding: 1px 6px; border-radius: 5px; font-size: 12.5px; }
-  .tag { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 11px; font-weight: 600; }
-  .tag.ok { background: rgba(46,204,113,.15); color: var(--ok); }
-  .tag.warn { background: rgba(245,166,35,.15); color: var(--warn); }
-  .tag.off { background: rgba(139,148,167,.15); color: var(--muted); }
-  .tag.danger { background: rgba(231,76,60,.15); color: var(--danger); }
-  .banner { background: rgba(245,166,35,.1); border: 1px solid rgba(245,166,35,.4); color: var(--warn); border-radius: 10px; padding: 10px 14px; margin: 12px 0; font-size: 13px; }
+  p code, td code, li code { background: #eef1f6; color: var(--navy); padding: 1px 6px; border-radius: 5px; font-size: 12.5px; }
+
+  .tag { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 11px; font-weight: 600; }
+  .tag.ok { background: var(--ok-bg); color: var(--ok); }
+  .tag.warn { background: var(--warn-bg); color: var(--warn); }
+  .tag.off { background: #f1f2f5; color: var(--muted); }
+  .tag.danger { background: var(--danger-bg); color: var(--danger); }
+  .banner { background: var(--gold-soft); border: 1px solid #f2ddaa; color: #6d5410; border-radius: 14px; padding: 12px 16px; margin: 14px 0; font-size: 13px; line-height: 1.6; }
+  .banner b { color: #52400c; }
   ul, ol { margin: 8px 0 8px 22px; }
-  li { margin: 3px 0; }
+  li { margin: 4px 0; }
 
   /* ---- diagramas ---- */
-  .diagram { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 22px; margin: 14px 0; overflow-x: auto; }
+  .diagram { background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 22px; margin: 14px 0; overflow-x: auto; box-shadow: var(--shadow); }
   .drow { display: flex; align-items: stretch; justify-content: center; gap: 0; flex-wrap: nowrap; min-width: 720px; }
-  .dbox { background: var(--panel2); border: 1px solid var(--border); border-radius: 10px; padding: 10px 14px; text-align: center; min-width: 130px; flex: 1; }
-  .dbox b { display: block; font-size: 13px; }
-  .dbox small { color: var(--muted); font-size: 11px; display: block; margin-top: 3px; line-height: 1.4; }
-  .dbox.hl { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
-  .dbox.warn { border-color: rgba(245,166,35,.6); }
-  .darrow { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 0 8px; color: var(--accent); font-size: 18px; min-width: 74px; }
-  .darrow small { color: var(--muted); font-size: 10px; text-align: center; line-height: 1.3; }
-  .dvert { text-align: center; color: var(--accent); font-size: 18px; line-height: 1.1; padding: 4px 0; }
-  .dvert small { color: var(--muted); font-size: 10px; display: block; }
-  .steps { counter-reset: step; margin: 10px 0; }
-  .step { display: flex; gap: 12px; padding: 10px 0; border-bottom: 1px dashed var(--border); }
+  .dbox { background: #fafbfd; border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; text-align: center; min-width: 130px; flex: 1; }
+  .dbox b { display: block; font-size: 13px; color: var(--navy); }
+  .dbox small { color: var(--muted); font-size: 11px; display: block; margin-top: 3px; line-height: 1.45; }
+  .dbox.hl { border-color: var(--gold-2); background: #fffdf4; box-shadow: 0 0 0 1px var(--gold-2) inset; }
+  .dbox.warn { border-color: var(--gold-2); }
+  .darrow { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 0 8px; color: var(--gold-2); font-size: 18px; font-weight: 700; min-width: 74px; }
+  .darrow small { color: var(--muted-2); font-size: 10px; text-align: center; line-height: 1.35; font-weight: 400; }
+  .dvert { text-align: center; color: var(--gold-2); font-size: 18px; font-weight: 700; line-height: 1.1; padding: 6px 0; }
+  .dvert small { color: var(--muted-2); font-size: 10px; display: block; font-weight: 400; }
+  .steps { counter-reset: step; margin: 4px 0; }
+  .step { display: flex; gap: 14px; padding: 11px 0; border-bottom: 1px dashed var(--border); }
   .step:last-child { border-bottom: none; }
-  .step::before { counter-increment: step; content: counter(step); background: var(--accent); color: #fff; min-width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 13px; margin-top: 2px; }
-  .step .body b { display: block; }
+  .step::before { counter-increment: step; content: counter(step); background: var(--gold); color: var(--navy); min-width: 27px; height: 27px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 13px; margin-top: 2px; }
+  .step .body b { display: block; color: var(--navy); }
   .step .body small { color: var(--muted); }
   .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
   @media (max-width: 800px) { .cols { grid-template-columns: 1fr; } .drow { min-width: 0; flex-wrap: wrap; } }
-  .footer { color: var(--muted); font-size: 12px; margin-top: 40px; border-top: 1px solid var(--border); padding-top: 12px; }
+  .footer { color: var(--muted); font-size: 12px; margin-top: 44px; border-top: 1px solid var(--border); padding-top: 14px; }
 </style>
 </head>
 <body>
 
-<h1>🪙 Cotação Mutual — Documentação da Operação</h1>
-<div class="sub">cotacaomutual.talkhub.me · cotações por grupo com fees da Mutual · fase 1 (somente cotações) · <a href="/painel">← voltar ao painel</a></div>
+<header>
+  <div class="logo">M</div>
+  <h1>Cotação Mutual<small>Documentação da operação · cotações por grupo com fees da Mutual · fase 1 (somente cotações)</small></h1>
+  <a class="navlink" href="/painel">🎛 Painel de controle</a>
+</header>
 
 <div class="toc">
   <a href="#arquitetura">1. Arquitetura</a>
