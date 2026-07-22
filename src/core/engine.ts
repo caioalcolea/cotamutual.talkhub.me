@@ -47,6 +47,11 @@ export interface QuoteTick {
   rawTickers: MutualQuoteData[];
   /** Fonte do preco-base por perna: ticker | ticker-fallback | quote. */
   priceSources: string[];
+  /**
+   * Cotacao atual do dolar (USD = USDC no projeto) em BRL, para exibir a
+   * cotacao tambem em dolar. null quando indisponivel ou nao aplicavel.
+   */
+  usdRateBRL: number | null;
 }
 
 export class QuoteEngine {
@@ -191,6 +196,33 @@ export class QuoteEngine {
       });
     }
 
-    return { result, basePrice, rawTickers, priceSources };
+    // Cotacao do dolar (USDC-BRL) para o bloco em USD da resposta.
+    // Informativa: falha aqui NUNCA derruba a cotacao principal.
+    let usdRateBRL: number | null = null;
+    try {
+      if (
+        (ctx.sourceAsset === "USDC" && ctx.destinationAsset === "BRL") ||
+        (ctx.sourceAsset === "BRL" && ctx.destinationAsset === "USDC")
+      ) {
+        // A propria cotacao ja e o dolar.
+        usdRateBRL = basePrice;
+      } else if (ctx.sourceAsset === "BRL" || ctx.destinationAsset === "BRL") {
+        const side = ctx.sourceAsset === "BRL" ? "buy" : "sell";
+        const usd = await fetchUnitPriceBRL(
+          this.clients,
+          "USDC",
+          this.referenceBrlAmount,
+          side,
+          this.tickerFallback,
+        );
+        usdRateBRL = usd.unitPriceBRL;
+        rawTickers.push(usd.rawTicker);
+        priceSources.push(`usd:${usd.source}`);
+      }
+    } catch {
+      usdRateBRL = null;
+    }
+
+    return { result, basePrice, rawTickers, priceSources, usdRateBRL };
   }
 }

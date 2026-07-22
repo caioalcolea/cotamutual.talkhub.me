@@ -116,10 +116,16 @@ As mensagens da fila são entregues via `OUTBOUND_MODE`:
 
 ## Respostas no grupo
 
+Toda cotação sai **em real e em dólar** (USD = USDC, cotação do dólar buscada no mesmo instante):
+
 ```txt
 📊 Cotação BRL → USDT (3/10)
-25.000 USDT = R$ 132.515,75
-1 USDT = R$ 5,30063
+1.000 USDT = R$ 5.147,46
+1 USDT = R$ 5,14746
+
+📊 Cotação USD → USDT (3/10)
+1.000 USDT = US$ 1.000,52
+1 USDT = US$ 1,00052
 ```
 
 * Compra com execução inativa (padrão): `✅ Pedido recebido! … A operação será concluída manualmente por um operador da Mutual.`

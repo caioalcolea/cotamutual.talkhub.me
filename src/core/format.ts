@@ -40,21 +40,57 @@ export function formatQty(value: number): string {
   }).format(value);
 }
 
+const usd2 = new Intl.NumberFormat("pt-BR", {
+  style: "currency",
+  currency: "USD",
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
+export function formatUSD(value: number): string {
+  return usd2.format(value);
+}
+
+/** Preco unitario em USD com mais casas (ex: US$ 1,00058). */
+export function formatUnitUSD(value: number): string {
+  const decimals = value >= 100 ? 2 : value >= 0.1 ? 5 : 8;
+  const formatted = new Intl.NumberFormat("pt-BR", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: decimals,
+  }).format(value);
+  return `US$ ${formatted}`;
+}
+
 export interface QuoteMessageContext {
   sourceAsset: string;
   destinationAsset: string;
   sequence: number;
   total: number;
   result: QuoteCalculation;
+  /** Cotacao atual do dolar em BRL — habilita o bloco em USD da mensagem. */
+  usdRateBRL?: number | null;
 }
 
-/** Mensagem de cotacao enviada ao grupo (uma por posicao da fila). */
+/**
+ * Mensagem de cotacao enviada ao grupo (uma por posicao da fila).
+ * Sempre em REAL e, quando ha cotacao do dolar disponivel, tambem em DOLAR:
+ *
+ *   📊 Cotação BRL → USDT (3/10)
+ *   1.000 USDT = R$ 5.147,46
+ *   1 USDT = R$ 5,14746
+ *
+ *   📊 Cotação USD → USDT (3/10)
+ *   1.000 USDT = US$ 1.000,52
+ *   1 USDT = US$ 1,00052
+ */
 export function formatQuoteMessage(ctx: QuoteMessageContext): string {
   const { sourceAsset, destinationAsset, sequence, total, result } = ctx;
   const header = `📊 Cotação ${sourceAsset} → ${destinationAsset} (${sequence}/${total})`;
+  const usd = Number(ctx.usdRateBRL);
+  const hasUsd = Number.isFinite(usd) && usd > 0;
 
   if (result.kind === "asset-purchase") {
-    return [
+    const brlBlock = [
       header,
       // Quantidade 1: usa a formatacao de preco unitario (mais casas decimais).
       `${formatQty(result.quantity)} ${destinationAsset} = ${
@@ -64,19 +100,43 @@ export function formatQuoteMessage(ctx: QuoteMessageContext): string {
     ]
       .filter(Boolean)
       .join("\n");
+
+    if (!hasUsd) return brlBlock;
+    const usdBlock = [
+      `📊 Cotação USD → ${destinationAsset} (${sequence}/${total})`,
+      `${formatQty(result.quantity)} ${destinationAsset} = ${
+        result.quantity === 1
+          ? formatUnitUSD(result.finalTotal / usd)
+          : formatUSD(result.finalTotal / usd)
+      }`,
+      result.quantity !== 1
+        ? `1 ${destinationAsset} = ${formatUnitUSD(result.finalUnitPrice / usd)}`
+        : null,
+    ]
+      .filter(Boolean)
+      .join("\n");
+    return `${brlBlock}\n\n${usdBlock}`;
   }
 
   if (result.kind === "brl-budget") {
-    return [
+    const brlBlock = [
       header,
       `${formatBRL(result.amountBRL)} = ${formatQty(result.quantity)} ${destinationAsset}`,
       `1 ${destinationAsset} = ${formatUnitBRL(result.finalUnitPrice)}`,
     ].join("\n");
+
+    if (!hasUsd) return brlBlock;
+    const usdBlock = [
+      `📊 Cotação USD → ${destinationAsset} (${sequence}/${total})`,
+      `${formatUSD(result.amountBRL / usd)} = ${formatQty(result.quantity)} ${destinationAsset}`,
+      `1 ${destinationAsset} = ${formatUnitUSD(result.finalUnitPrice / usd)}`,
+    ].join("\n");
+    return `${brlBlock}\n\n${usdBlock}`;
   }
 
   // receive-side: venda para BRL ou conversao com recebimento no destino.
   if (destinationAsset === "BRL") {
-    return [
+    const brlBlock = [
       header,
       `${formatQty(result.quantity)} ${sourceAsset} = ${
         result.quantity === 1 ? formatUnitBRL(result.netAmount) : formatBRL(result.netAmount)
@@ -85,8 +145,25 @@ export function formatQuoteMessage(ctx: QuoteMessageContext): string {
     ]
       .filter(Boolean)
       .join("\n");
+
+    if (!hasUsd) return brlBlock;
+    const usdBlock = [
+      `📊 Cotação ${sourceAsset} → USD (${sequence}/${total})`,
+      `${formatQty(result.quantity)} ${sourceAsset} = ${
+        result.quantity === 1
+          ? formatUnitUSD(result.netAmount / usd)
+          : formatUSD(result.netAmount / usd)
+      }`,
+      result.quantity !== 1
+        ? `1 ${sourceAsset} = ${formatUnitUSD(result.finalUnitPrice / usd)}`
+        : null,
+    ]
+      .filter(Boolean)
+      .join("\n");
+    return `${brlBlock}\n\n${usdBlock}`;
   }
 
+  // Cripto -> cripto: sem perna BRL, sem bloco em dolar.
   return [
     header,
     `${formatQty(result.quantity)} ${sourceAsset} = ${formatQty(result.netAmount)} ${destinationAsset}`,

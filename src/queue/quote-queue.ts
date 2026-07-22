@@ -195,6 +195,7 @@ export class QuoteQueue {
           sequence: i,
           total: session.total,
           result: tick.result,
+          usdRateBRL: tick.usdRateBRL,
         });
         session.lastQuoteSummary = formatQuoteSummary({
           sourceAsset: ctx.sourceAsset,

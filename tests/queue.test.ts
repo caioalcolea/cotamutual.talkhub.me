@@ -164,3 +164,67 @@ test("cotacao e CONSUMIDA pelo /COMPRAR: segunda confirmacao exige cotacao nova"
   assert.equal(queue.peekLastQuote("whatsapp", "G1"), null);
   assert.equal(queue.interruptForBuy("whatsapp", "G1"), null);
 });
+
+// ---------------------------------------------------------------------------
+// Cotacao sempre em REAL e DOLAR (bloco USD com a cotacao atual do dolar)
+// ---------------------------------------------------------------------------
+
+import { formatQuoteMessage } from "../src/core/format.js";
+
+test("formatQuoteMessage: compra mostra blocos em BRL e em USD", () => {
+  const result = calculateAssetPurchase({
+    quantity: 1000,
+    baseUnitPrice: 5.14,
+    fee: { id: "f", feeFixed: 0, feePercentage: 0 },
+  });
+  const msg = formatQuoteMessage({
+    sourceAsset: "BRL",
+    destinationAsset: "USDT",
+    sequence: 3,
+    total: 10,
+    result,
+    usdRateBRL: 5.14, // dolar (USDC) no mesmo instante
+  });
+  assert.match(msg, /📊 Cotação BRL → USDT \(3\/10\)/);
+  assert.match(msg, /1\.000 USDT = R\$\s5\.140,00/);
+  assert.match(msg, /📊 Cotação USD → USDT \(3\/10\)/);
+  assert.match(msg, /1\.000 USDT = US\$\s1\.000,00/);
+  assert.match(msg, /1 USDT = US\$ 1,00/);
+});
+
+test("formatQuoteMessage: venda mostra bloco ATIVO → USD", () => {
+  const result = calculateReceiveSide({
+    quantity: 1000,
+    baseUnitPrice: 5.1,
+    fee: { id: "f", feeFixed: 0, feePercentage: 0 },
+  });
+  const msg = formatQuoteMessage({
+    sourceAsset: "USDT",
+    destinationAsset: "BRL",
+    sequence: 1,
+    total: 10,
+    result,
+    usdRateBRL: 5.1,
+  });
+  assert.match(msg, /📊 Cotação USDT → BRL \(1\/10\)/);
+  assert.match(msg, /📊 Cotação USDT → USD \(1\/10\)/);
+  assert.match(msg, /1\.000 USDT = US\$\s1\.000,00/);
+});
+
+test("formatQuoteMessage: sem cotacao do dolar -> so o bloco em BRL", () => {
+  const result = calculateAssetPurchase({
+    quantity: 1000,
+    baseUnitPrice: 5.14,
+    fee: { id: "f", feeFixed: 0, feePercentage: 0 },
+  });
+  const msg = formatQuoteMessage({
+    sourceAsset: "BRL",
+    destinationAsset: "USDT",
+    sequence: 1,
+    total: 10,
+    result,
+    usdRateBRL: null,
+  });
+  assert.ok(!msg.includes("US$"));
+  assert.ok(!msg.includes("USD →"));
+});
