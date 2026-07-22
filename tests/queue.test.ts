@@ -117,17 +117,19 @@ test("formatOperationRecord: compra USDT no formato do template", () => {
   assert.match(record, /ID da Transação:\n0ae8fbb4-0ecb-4ba1-9ea4-10f46ed9a353/);
   assert.match(record, /📅 Data da Operação:\n11\/07\/2026 17:55/); // America/Sao_Paulo
   assert.match(record, /Tipo de Operação:\nCOMPRA USDT/);
-  assert.match(record, /Cotação:\n1 USDT = R\$ 5,16362/);
+  // fee 0.0001% + 0.0001% = 0,0002% sobre 5.163,10
+  assert.match(record, /Cotação:\n1 USDT = R\$ 5,16311/);
   assert.match(record, /💵 Montante em USDT:\nTotal: 1\.000 USDT\nPendente: 1\.000 USDT/);
   // Intl pt-BR usa espaco nao separavel (U+00A0) apos "R$"
-  assert.match(record, /💼 Montante em BRL:\nTotal: R\$[\s ]5\.163,62\nPendente: R\$[\s ]5\.163,62/);
+  assert.match(record, /💼 Montante em BRL:\nTotal: R\$[\s ]5\.163,11\nPendente: R\$[\s ]5\.163,11/);
 });
 
 test("formatOperationRecord: venda BTC mostra montante liquido em BRL", () => {
+  // fixa 0.5% + percentual 0.5% = 1% -> liquido 594.000
   const result = calculateReceiveSide({
     quantity: 1,
     baseUnitPrice: 600_000,
-    fee: { id: "f", feeFixed: 10, feePercentage: 0.01 },
+    fee: { id: "f", feeFixed: 0.5, feePercentage: 0.5 },
   });
   const record = formatOperationRecord({
     groupId: "G",
@@ -140,7 +142,7 @@ test("formatOperationRecord: venda BTC mostra montante liquido em BRL", () => {
   });
   assert.match(record, /Tipo de Operação:\nVENDA BTC/);
   assert.match(record, /💵 Montante em BTC:\nTotal: 1 BTC/);
-  assert.match(record, /💼 Montante em BRL:\nTotal: R\$[\s ]593\.990,00/);
+  assert.match(record, /💼 Montante em BRL:\nTotal: R\$[\s ]594\.000,00/);
 });
 
 test("cotacao e CONSUMIDA pelo /COMPRAR: segunda confirmacao exige cotacao nova", async () => {

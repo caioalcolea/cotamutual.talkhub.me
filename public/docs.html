@@ -325,7 +325,7 @@ curl 'https://cotacaomutual.talkhub.me/api/panel/diag/quote?asset=USDT&side=buy&
 <table>
   <tr><th>Variável</th><th>De onde vem</th></tr>
   <tr><td><code>baseUnitPrice</code></td><td>ticker: <code>sell</code>(ask) na compra · <code>buy</code>(bid) na venda · fallback <code>last</code> → razão <code>source_amount/target_amount</code> → <code>price</code></td></tr>
-  <tr><td><code>feePercentage</code> · <code>feeFixed</code></td><td>fee EXATA do merchant (operation+source+destination)</td></tr>
+  <tr><td><code>feePercentage</code> · <code>feeFixed</code></td><td>fee EXATA do merchant (operation+source+destination) — AMBAS em pontos percentuais, somadas: taxa = (fixa + percentual)/100</td></tr>
   <tr><td><code>quantity</code> / <code>amountBRL</code></td><td>comando do grupo (25K → 25.000; aceita K/M e vírgula)</td></tr>
   <tr><td><code>finalUnitPrice</code> · <code>finalTotal</code> / <code>netAmount</code></td><td>resultado das fórmulas abaixo — <b>único dado exibido no grupo</b></td></tr>
 </table>
@@ -333,29 +333,29 @@ curl 'https://cotacaomutual.talkhub.me/api/panel/diag/quote?asset=USDT&side=buy&
 <!-- ================================================================ -->
 <h2 id="formulas">6. Fórmulas e exemplo numérico</h2>
 
-<pre>feeTotal = (base × feePercentage) + feeFixed
+<pre><span style="color:#fac547">taxa = (feeFixed + feePercentage) / 100</span>
+       ← as duas fees da Mutual são PONTOS PERCENTUAIS que se SOMAM
+       (ex: fixa 0.1 + percentual 0.65 → taxa total de 0,75%)
 
 ① Quantidade do ativo (/COTAR 25K USDT — cliente paga mais):
-     baseTotal  = quantidade × baseUnitPrice
-     finalTotal = baseTotal + feeTotal(baseTotal)
+     finalTotal = quantidade × baseUnitPrice × (1 + taxa)
 
 ② Orçamento em BRL (/COTAR 5000 BRL USDT — fee sai do orçamento):
-     baseAvailable = (amountBRL − feeFixed) / (1 + feePercentage)
+     baseAvailable = amountBRL / (1 + taxa)
      quantity      = baseAvailable / baseUnitPrice
 
 ③ Venda/conversão da origem (/COTAR 1 BTC BRL — cliente recebe menos):
-     gross = quantidade × baseUnitPrice
-     net   = gross − feeTotal(gross)</pre>
+     net = quantidade × baseUnitPrice × (1 − taxa)</pre>
 
-<h3>Exemplo real (fee do merchant: fixa 0,0001 + percentual 0,0001 = 0,01%)</h3>
+<h3>Exemplo real (fee do merchant: fixa 0% + percentual 0,65% = 0,65%)</h3>
 <table>
   <tr><th>Passo</th><th>Valor</th></tr>
   <tr><td>Comando no grupo</td><td><code>/COTAR 1K USDT</code></td></tr>
-  <tr><td>Ticker (ask, sem fee)</td><td>1 USDT = R$ 5,1631</td></tr>
-  <tr><td>baseTotal = 1.000 × 5,1631</td><td>R$ 5.163,10</td></tr>
-  <tr><td>fee % = 5.163,10 × 0,0001</td><td>R$ 0,516310</td></tr>
-  <tr><td>fee fixa</td><td>R$ 0,0001</td></tr>
-  <tr><td><b>finalTotal</b> (mostrado no grupo)</td><td><b>R$ 5.163,62</b> → 1 USDT = R$ 5,16362</td></tr>
+  <tr><td>Ticker (ask, sem fee)</td><td>1 USDT = R$ 5,0781</td></tr>
+  <tr><td>baseTotal = 1.000 × 5,0781</td><td>R$ 5.078,10</td></tr>
+  <tr><td>taxa total = (0 + 0,65) / 100</td><td>0,65%</td></tr>
+  <tr><td>fee = 5.078,10 × 0,0065</td><td>R$ 33,01</td></tr>
+  <tr><td><b>finalTotal</b> (mostrado no grupo)</td><td><b>R$ 5.111,11</b> → 1 USDT = R$ 5,11111</td></tr>
 </table>
 <p class="sub">O grupo vê apenas a cotação final. feePercentage, feeFixed, preço-base sem fee, merchantId e ticker cru ficam SÓ no painel/registro (<code>data/quote-log.jsonl</code>).</p>
 

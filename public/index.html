@@ -238,7 +238,7 @@ function renderMerchants(data) {
     const missing = m.feeAudit.filter((f) => !f.configured);
     const auditRows = m.feeAudit.map((f) =>
       `<tr><td>${esc(f.operation)}</td><td>${esc(f.sourceAsset)} → ${esc(f.destinationAsset)}</td>
-       <td>${f.configured ? `<span class="tag ok">ok</span> <span class="mono muted">fixa ${f.feeFixed} · % ${f.feePercentage}</span>` : '<span class="tag danger">ausente</span>'}</td></tr>`).join("");
+       <td>${f.configured ? `<span class="tag ok">ok</span> <span class="mono muted">fixa ${f.feeFixed}% + ${f.feePercentage}% = ${((f.feeFixed || 0) + (f.feePercentage || 0)).toFixed(4).replace(/\.?0+$/, "")}%</span>` : '<span class="tag danger">ausente</span>'}</td></tr>`).join("");
     const groups = (m.linkGroups || []).map((g) =>
       `${g.active ? "🟢" : "⚪"} ${esc(g.name || g.groupId)} <span class="mono muted">(${esc(g.channel)})</span>`).join("<br>") || '<span class="muted">sem grupos</span>';
     return `<details ${missing.length ? "open" : ""}>

@@ -1,25 +1,32 @@
 /**
- * Aplicacao da fee na direcao financeira correta (secoes 11 e 12).
+ * Aplicacao da fee na direcao financeira correta.
+ *
+ * As fees da Mutual vem em PONTOS PERCENTUAIS: feeFixed e feePercentage sao
+ * ambas porcentagens que se SOMAM (ex: fixa 0.1 + percentual 0.65 = 0,75%).
+ *   taxa = (feeFixed + feePercentage) / 100
  *
  * Compra/conversao: cliente paga mais ou recebe menos.
  * Venda:            cliente recebe o valor bruto menos a fee.
  */
 
-import { calculateFee } from "./fees.js";
+import { calculateFee, feeRate } from "./fees.js";
 import type { MutualFee } from "../types.js";
 
 export interface QuoteResultBase {
   kind: "asset-purchase" | "brl-budget" | "receive-side";
+  /** Pontos percentuais, como cadastrado na Mutual. */
   feePercentage: number;
+  /** Pontos percentuais, como cadastrado na Mutual. */
   feeFixed: number;
   feePercentageValue: number;
+  feeFixedValue: number;
   feeTotalValue: number;
   finalUnitPrice: number;
 }
 
 /**
  * Usuario informou a QUANTIDADE do ativo desejado (ex: /REF 25K USDT).
- * finalTotal = baseTotal + fee (cliente paga mais, em BRL).
+ * finalTotal = baseTotal × (1 + taxa) — cliente paga mais, em BRL.
  */
 export interface AssetPurchaseResult extends QuoteResultBase {
   kind: "asset-purchase";
@@ -47,6 +54,7 @@ export function calculateAssetPurchase(params: {
     feePercentage: calculatedFee.feePercentage,
     feeFixed: calculatedFee.feeFixed,
     feePercentageValue: calculatedFee.feePercentageValue,
+    feeFixedValue: calculatedFee.feeFixedValue,
     feeTotalValue: calculatedFee.feeTotalValue,
     finalTotal,
     finalUnitPrice: finalTotal / quantity,
@@ -55,8 +63,8 @@ export function calculateAssetPurchase(params: {
 
 /**
  * Usuario informou o ORCAMENTO em BRL (ex: /COTAR 5000 BRL USDT).
- * Parte do valor corresponde a taxa:
- *   baseAvailable = (amountBRL - feeFixed) / (1 + feePercentage)
+ * A fee sai de dentro do orcamento:
+ *   baseAvailable = amountBRL / (1 + taxa)
  */
 export interface BrlBudgetResult extends QuoteResultBase {
   kind: "brl-budget";
@@ -72,16 +80,16 @@ export function calculateBRLToAsset(params: {
   fee: MutualFee;
 }): BrlBudgetResult {
   const { amountBRL, baseUnitPrice, fee } = params;
-  const feePercentage = Number(fee.feePercentage || 0);
-  const feeFixed = Number(fee.feeFixed || 0);
+  const rate = feeRate(fee);
 
-  const baseAvailable = (amountBRL - feeFixed) / (1 + feePercentage);
+  const baseAvailable = amountBRL / (1 + rate);
   if (baseAvailable <= 0) {
     throw new Error("Valor insuficiente após aplicação da fee");
   }
 
-  const feePercentageValue = baseAvailable * feePercentage;
-  const feeTotalValue = feePercentageValue + feeFixed;
+  const feePercentageValue = baseAvailable * (Number(fee.feePercentage || 0) / 100);
+  const feeFixedValue = baseAvailable * (Number(fee.feeFixed || 0) / 100);
+  const feeTotalValue = feePercentageValue + feeFixedValue;
   const quantity = baseAvailable / baseUnitPrice;
 
   return {
@@ -89,9 +97,10 @@ export function calculateBRLToAsset(params: {
     amountBRL,
     baseUnitPrice,
     baseAvailable,
-    feePercentage,
-    feeFixed,
+    feePercentage: Number(fee.feePercentage || 0),
+    feeFixed: Number(fee.feeFixed || 0),
     feePercentageValue,
+    feeFixedValue,
     feeTotalValue,
     quantity,
     finalUnitPrice: amountBRL / quantity,
@@ -101,8 +110,8 @@ export function calculateBRLToAsset(params: {
 /**
  * Usuario informou a quantidade do ativo de ORIGEM e recebe no destino
  * (venda cripto -> BRL, conversao USDC -> BRL ou cripto -> cripto).
- * A fee e somada internamente e descontada do valor recebido:
- *   net = gross - fee
+ * A fee e descontada do valor recebido:
+ *   net = gross × (1 − taxa)
  */
 export interface ReceiveSideResult extends QuoteResultBase {
   kind: "receive-side";
@@ -134,6 +143,7 @@ export function calculateReceiveSide(params: {
     feePercentage: calculatedFee.feePercentage,
     feeFixed: calculatedFee.feeFixed,
     feePercentageValue: calculatedFee.feePercentageValue,
+    feeFixedValue: calculatedFee.feeFixedValue,
     feeTotalValue: calculatedFee.feeTotalValue,
     netAmount,
     finalUnitPrice: netAmount / quantity,

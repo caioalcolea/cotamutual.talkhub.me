@@ -56,12 +56,14 @@ Aliases: `USD`, `DÓLAR`, `DOLARES` → **USDC** · `REAL/REAIS` → BRL · `TET
 
 ### Direção financeira da fee
 
-```txt
-feeTotal = (base × feePercentage) + feeFixed
+As fees da Mutual vêm em **pontos percentuais** — `feeFixed` e `feePercentage` são ambas porcentagens que se **somam** (ex: fixa 0.1 + percentual 0.65 = 0,75%):
 
-Quantidade do ativo (BRL→cripto):  finalTotal   = baseTotal + feeTotal          (paga mais)
-Orçamento BRL:                     baseAvailable = (BRL − feeFixed)/(1 + fee%)  (recebe menos)
-Venda/conversão da origem:         net          = gross − feeTotal              (recebe menos)
+```txt
+taxa = (feeFixed + feePercentage) / 100
+
+Quantidade do ativo (BRL→cripto):  finalTotal    = base × (1 + taxa)   (paga mais)
+Orçamento BRL:                     baseAvailable = BRL / (1 + taxa)    (recebe menos)
+Venda/conversão da origem:         net           = gross × (1 − taxa)  (recebe menos)
 ```
 
 ---

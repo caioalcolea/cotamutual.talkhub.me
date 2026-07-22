@@ -125,37 +125,50 @@ test("selectFee: combinacao exata, sem fallback silencioso", () => {
   assert.equal(selectFee(FEES, "conversion", "BRL", "USDT"), null);
 });
 
-test("calculateFee: feeTotal = base x percentual + fixa (exemplo da secao 14)", () => {
-  const fee: MutualFee = { id: "f", feeFixed: 0.0001, feePercentage: 0.0001 };
-  const base = 25_000 * 5.3; // 132.500
-  const calc = calculateFee(base, fee);
-  assert.ok(Math.abs(calc.feeTotalValue - 13.2501) < 1e-9);
+test("calculateFee: fixa e percentual sao AMBAS pontos percentuais que se somam", () => {
+  // fixa 0.1% + percentual 0.65% = 0,75% do valor-base
+  const fee: MutualFee = { id: "f", feeFixed: 0.1, feePercentage: 0.65 };
+  const calc = calculateFee(10_000, fee);
+  assert.ok(Math.abs(calc.feeRate - 0.0075) < 1e-12);
+  assert.ok(Math.abs(calc.feePercentageValue - 65) < 1e-9);
+  assert.ok(Math.abs(calc.feeFixedValue - 10) < 1e-9);
+  assert.ok(Math.abs(calc.feeTotalValue - 75) < 1e-9);
   assert.throws(() => calculateFee(0, fee));
 });
 
-test("calculateAssetPurchase: /REF 25K USDT reproduz o exemplo do descritivo", () => {
+test("calculateAssetPurchase: caso real VIZZO — 0,65% NAO pode virar 65%", () => {
+  // Bug de producao: 1 USDT @ 5,0781 com fee 0.65 saia R$ 8,38 (fee tratada
+  // como fracao). Correto: 5,0781 × 1,0065 = R$ 5,11111.
+  const fee: MutualFee = { id: "f", feeFixed: 0, feePercentage: 0.65 };
+  const r = calculateAssetPurchase({ quantity: 1, baseUnitPrice: 5.0781, fee });
+  assert.ok(Math.abs(r.finalTotal - 5.11111) < 1e-4);
+  assert.ok(r.finalTotal < 5.2, "fee de 0,65% jamais pode dobrar o preço");
+});
+
+test("calculateAssetPurchase: fee somada em cima do total", () => {
+  // fixa 0.0001% + percentual 0.0001% = 0,0002%
   const fee: MutualFee = { id: "f", feeFixed: 0.0001, feePercentage: 0.0001 };
   const r = calculateAssetPurchase({ quantity: 25_000, baseUnitPrice: 5.3, fee });
-  assert.ok(Math.abs(r.finalTotal - 132_513.2501) < 1e-6);
-  assert.ok(Math.abs(r.finalUnitPrice - 5.30053) < 1e-4);
+  assert.ok(Math.abs(r.finalTotal - 132_500.265) < 1e-6);
 });
 
-test("calculateBRLToAsset: fee descontada do orcamento", () => {
-  const fee: MutualFee = { id: "f", feeFixed: 10, feePercentage: 0.01 };
-  const r = calculateBRLToAsset({ amountBRL: 5000, baseUnitPrice: 5, fee });
-  // baseAvailable = (5000 - 10) / 1.01
-  assert.ok(Math.abs(r.baseAvailable - 4940.594059) < 1e-4);
-  assert.ok(Math.abs(r.quantity - r.baseAvailable / 5) < 1e-9);
+test("calculateBRLToAsset: fee sai de dentro do orcamento", () => {
+  // fixa 0.35% + percentual 0.65% = 1%
+  const fee: MutualFee = { id: "f", feeFixed: 0.35, feePercentage: 0.65 };
+  const r = calculateBRLToAsset({ amountBRL: 5050, baseUnitPrice: 5, fee });
+  // baseAvailable = 5050 / 1.01 = 5000
+  assert.ok(Math.abs(r.baseAvailable - 5000) < 1e-9);
+  assert.ok(Math.abs(r.quantity - 1000) < 1e-9);
   // baseAvailable + feeTotal esgota exatamente o orcamento
-  assert.ok(Math.abs(r.baseAvailable + r.feeTotalValue - 5000) < 1e-6);
-  assert.throws(() => calculateBRLToAsset({ amountBRL: 5, baseUnitPrice: 5, fee }));
+  assert.ok(Math.abs(r.baseAvailable + r.feeTotalValue - 5050) < 1e-9);
 });
 
-test("calculateReceiveSide: venda recebe o bruto menos a fee", () => {
-  const fee: MutualFee = { id: "f", feeFixed: 10, feePercentage: 0.01 };
+test("calculateReceiveSide: venda recebe o bruto menos a taxa total", () => {
+  // fixa 0.5% + percentual 0.5% = 1%
+  const fee: MutualFee = { id: "f", feeFixed: 0.5, feePercentage: 0.5 };
   const r = calculateReceiveSide({ quantity: 1, baseUnitPrice: 600_000, fee });
   assert.equal(r.grossAmount, 600_000);
-  assert.ok(Math.abs(r.netAmount - (600_000 - 6000 - 10)) < 1e-9);
+  assert.ok(Math.abs(r.netAmount - 594_000) < 1e-9);
 });
 
 test("auditMerchantFees: aponta pares ausentes da matriz minima", () => {

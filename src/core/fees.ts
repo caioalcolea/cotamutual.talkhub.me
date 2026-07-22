@@ -32,13 +32,28 @@ export function selectFee(
 
 export interface CalculatedFee {
   baseValue: number;
+  /** Como cadastrado na Mutual, em PONTOS PERCENTUAIS (0.65 = 0,65%). */
   feePercentage: number;
+  /** Como cadastrado na Mutual, TAMBEM em pontos percentuais. */
   feeFixed: number;
+  /** Taxa total como fracao: (feeFixed + feePercentage) / 100. */
+  feeRate: number;
   feePercentageValue: number;
+  feeFixedValue: number;
   feeTotalValue: number;
 }
 
-/** feeTotalValue = (baseValue × feePercentage) + feeFixed */
+/** Taxa total (fracao) de uma fee: fixa + percentual, ambas em pontos percentuais. */
+export function feeRate(fee: MutualFee): number {
+  return (Number(fee.feeFixed || 0) + Number(fee.feePercentage || 0)) / 100;
+}
+
+/**
+ * As fees da Mutual vem em PONTOS PERCENTUAIS — feeFixed e feePercentage sao
+ * ambas porcentagens que se SOMAM (ex: fixa 0.1 + percentual 0.65 = 0,75%).
+ *
+ *   feeTotalValue = baseValue × (feeFixed + feePercentage) / 100
+ */
 export function calculateFee(baseValue: number, fee: MutualFee): CalculatedFee {
   const value = Number(baseValue);
   const feePercentage = Number(fee.feePercentage || 0);
@@ -48,10 +63,19 @@ export function calculateFee(baseValue: number, fee: MutualFee): CalculatedFee {
     throw new Error("Valor-base inválido");
   }
 
-  const feePercentageValue = value * feePercentage;
-  const feeTotalValue = feePercentageValue + feeFixed;
+  const feePercentageValue = value * (feePercentage / 100);
+  const feeFixedValue = value * (feeFixed / 100);
+  const feeTotalValue = feePercentageValue + feeFixedValue;
 
-  return { baseValue: value, feePercentage, feeFixed, feePercentageValue, feeTotalValue };
+  return {
+    baseValue: value,
+    feePercentage,
+    feeFixed,
+    feeRate: (feePercentage + feeFixed) / 100,
+    feePercentageValue,
+    feeFixedValue,
+    feeTotalValue,
+  };
 }
 
 /** Matriz minima de fees exigida por merchant (secao 15). */

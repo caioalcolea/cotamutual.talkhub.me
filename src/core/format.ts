@@ -56,7 +56,10 @@ export function formatQuoteMessage(ctx: QuoteMessageContext): string {
   if (result.kind === "asset-purchase") {
     return [
       header,
-      `${formatQty(result.quantity)} ${destinationAsset} = ${formatBRL(result.finalTotal)}`,
+      // Quantidade 1: usa a formatacao de preco unitario (mais casas decimais).
+      `${formatQty(result.quantity)} ${destinationAsset} = ${
+        result.quantity === 1 ? formatUnitBRL(result.finalTotal) : formatBRL(result.finalTotal)
+      }`,
       result.quantity !== 1 ? `1 ${destinationAsset} = ${formatUnitBRL(result.finalUnitPrice)}` : null,
     ]
       .filter(Boolean)
@@ -75,7 +78,9 @@ export function formatQuoteMessage(ctx: QuoteMessageContext): string {
   if (destinationAsset === "BRL") {
     return [
       header,
-      `${formatQty(result.quantity)} ${sourceAsset} = ${formatBRL(result.netAmount)}`,
+      `${formatQty(result.quantity)} ${sourceAsset} = ${
+        result.quantity === 1 ? formatUnitBRL(result.netAmount) : formatBRL(result.netAmount)
+      }`,
       result.quantity !== 1 ? `1 ${sourceAsset} = ${formatUnitBRL(result.finalUnitPrice)}` : null,
     ]
       .filter(Boolean)
