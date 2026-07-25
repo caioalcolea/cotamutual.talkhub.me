@@ -94,13 +94,16 @@ test("parseCommand: tabela de resultados esperados da secao 13", () => {
 });
 
 test("parseCommand: comandos de compra, venda, ajuda e ignorados", () => {
-  assert.equal(parseCommand("/COMPRAR")?.kind, "buy");
-  assert.equal(parseCommand("/order")?.kind, "buy");
+  const buy = parseCommand("/COMPRA");
+  assert.ok(buy && buy.kind === "trade" && buy.side === "buy");
+  assert.equal(parseCommand("/comprar")?.kind, "trade");
+  assert.equal(parseCommand("/order")?.kind, "trade");
   assert.equal(parseCommand("/AJUDA")?.kind, "help");
-  const sell = parseCommand("/VENDER 1 BTC");
-  assert.ok(sell && sell.kind === "quote");
-  assert.equal(sell.sourceAsset, "BTC");
-  assert.equal(sell.destinationAsset, "BRL");
+  const sell = parseCommand("/VENDA 50k USDT");
+  assert.ok(sell && sell.kind === "trade");
+  assert.equal(sell.side, "sell");
+  assert.equal(sell.asset, "USDT");
+  assert.equal(sell.amount, 50_000);
   // Mensagens sem "/" e comandos desconhecidos sao ignorados.
   assert.equal(parseCommand("bom dia"), null);
   assert.equal(parseCommand("/qualquercoisa 123"), null);
@@ -242,23 +245,35 @@ test("SettingsStore: compra SEMPRE desligada por padrao; cotacoes ligadas", () =
   assert.equal(reloaded.getEffective("whatsapp", "G1").buy, true);
 });
 
-test("parseCommand: argumentos do /COMPRAR sao lidos", () => {
-  const bare = parseCommand("/COMPRAR");
-  assert.ok(bare && bare.kind === "buy" && !bare.argsPresent && bare.argsValid);
+test("parseCommand: argumentos de /COMPRA e /VENDA sao lidos", () => {
+  const bare = parseCommand("/COMPRA");
+  assert.ok(bare && bare.kind === "trade" && !bare.argsPresent && bare.argsValid);
 
-  const withAll = parseCommand("/comprar 1k btc");
-  assert.ok(withAll && withAll.kind === "buy");
+  const withAll = parseCommand("/compra 50k usdt");
+  assert.ok(withAll && withAll.kind === "trade");
   assert.equal(withAll.argsPresent, true);
   assert.equal(withAll.argsValid, true);
-  assert.equal(withAll.amount, 1000);
-  assert.equal(withAll.asset, "BTC");
+  assert.equal(withAll.amount, 50_000);
+  assert.equal(withAll.amountRaw, "50k");
+  assert.equal(withAll.sizeKind, "asset");
+  assert.equal(withAll.asset, "USDT");
 
-  const assetOnly = parseCommand("/comprar usdt");
-  assert.ok(assetOnly && assetOnly.kind === "buy" && assetOnly.asset === "USDT");
+  const budget = parseCommand("/venda 5000 brl usdt");
+  assert.ok(budget && budget.kind === "trade" && budget.side === "sell");
+  assert.equal(budget.sizeKind, "brl");
+  assert.equal(budget.amount, 5000);
+  assert.equal(budget.asset, "USDT");
 
-  const amountOnly = parseCommand("/comprar 100k");
-  assert.ok(amountOnly && amountOnly.kind === "buy" && amountOnly.amount === 100_000);
+  const assetOnly = parseCommand("/compra usdt");
+  assert.ok(assetOnly && assetOnly.kind === "trade" && assetOnly.asset === "USDT");
 
-  const garbage = parseCommand("/comprar tudo agora");
-  assert.ok(garbage && garbage.kind === "buy" && garbage.argsPresent && !garbage.argsValid);
+  const garbage = parseCommand("/compra tudo agora");
+  assert.ok(garbage && garbage.kind === "trade" && garbage.argsPresent && !garbage.argsValid);
+});
+
+test("parseCommand: /COTAR guarda o valor como digitado (dicas da resposta)", () => {
+  const q = parseCommand("/COTAR 50K USDT");
+  assert.ok(q && q.kind === "quote");
+  assert.equal(q.amountRaw, "50K");
+  assert.equal(q.amount, 50_000);
 });

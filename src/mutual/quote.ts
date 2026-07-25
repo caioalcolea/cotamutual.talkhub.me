@@ -88,35 +88,24 @@ export function hasTickerPrice(data: MutualQuoteData): boolean {
 /** De onde saiu o preco-base usado. */
 export type PriceSource = "ticker" | "ticker-fallback" | "quote";
 
-export interface UnitPriceResult {
-  /** Preco de 1 unidade do ativo, em BRL — SEM fee (a fee do merchant e aplicada por cima). */
-  unitPriceBRL: number;
-  rawTicker: MutualQuoteData;
+interface RawTickerResult {
+  data: MutualQuoteData;
   source: PriceSource;
 }
 
 /**
- * Descobre o preco unitario (BRL por 1 unidade do ativo) fazendo uma cotacao
- * BRL -> ativo com um valor de referencia.
- *
- * Estrategia de fonte do preco:
- *   1. Consulta o ambiente configurado. Se a resposta for TICKER
- *      (buy/sell/last — preco de mercado sem fee), usa direto.
- *   2. Se vier o formato "quote" (preco de provider com spread embutido),
- *      consulta a URL alternativa em busca do ticker (fallback transparente,
- *      ate a Mutual servir o ticker no mesmo ambiente).
- *   3. Ultimo recurso: preco derivado do formato "quote".
- *
- * `side` = lado do CLIENTE sobre o ativo: "buy" quando ele compra o ativo,
- * "sell" quando ele vende (define qual ponta do book usar no formato ticker).
+ * Busca o ticker do ativo aplicando a estrategia de fonte:
+ *   1. ambiente configurado; se vier TICKER (preco de mercado), usa;
+ *   2. se vier o formato "quote" (spread de provider), tenta o ticker na URL
+ *      alternativa (fallback transparente);
+ *   3. ultimo recurso: o proprio formato "quote".
  */
-export async function fetchUnitPriceBRL(
+async function fetchRawTicker(
   clients: MutualClients,
   asset: string,
   referenceBrlAmount: number,
-  side: QuoteSide = "buy",
-  tickerFallback = true,
-): Promise<UnitPriceResult> {
+  tickerFallback: boolean,
+): Promise<RawTickerResult> {
   const request: TickerRequest = {
     symbol: `${asset}-BRL`,
     amount: referenceBrlAmount,
@@ -127,11 +116,7 @@ export async function fetchUnitPriceBRL(
 
   const primary = await fetchMutualQuote(clients.crypto, request);
   if (hasTickerPrice(primary)) {
-    return {
-      unitPriceBRL: deriveUnitPrice(primary, side) as number,
-      rawTicker: primary,
-      source: "ticker",
-    };
+    return { data: primary, source: "ticker" };
   }
 
   if (tickerFallback) {
@@ -139,22 +124,84 @@ export async function fetchUnitPriceBRL(
     try {
       const secondary = await fetchMutualQuote(alternate, request);
       if (hasTickerPrice(secondary)) {
-        return {
-          unitPriceBRL: deriveUnitPrice(secondary, side) as number,
-          rawTicker: secondary,
-          source: "ticker-fallback",
-        };
+        return { data: secondary, source: "ticker-fallback" };
       }
     } catch {
       // URL alternativa indisponivel: segue com o formato "quote" do primario.
     }
   }
 
-  const unitPriceBRL = deriveUnitPrice(primary, side);
+  return { data: primary, source: "quote" };
+}
+
+export interface UnitPriceResult {
+  /** Preco de 1 unidade do ativo, em BRL — SEM fee (a fee do merchant e aplicada por cima). */
+  unitPriceBRL: number;
+  rawTicker: MutualQuoteData;
+  source: PriceSource;
+}
+
+/**
+ * Preco unitario (BRL por 1 unidade do ativo) de UM lado do book.
+ *
+ * `side` = lado do CLIENTE sobre o ativo: "buy" quando ele compra o ativo,
+ * "sell" quando ele vende.
+ */
+export async function fetchUnitPriceBRL(
+  clients: MutualClients,
+  asset: string,
+  referenceBrlAmount: number,
+  side: QuoteSide = "buy",
+  tickerFallback = true,
+): Promise<UnitPriceResult> {
+  const { data, source } = await fetchRawTicker(clients, asset, referenceBrlAmount, tickerFallback);
+  const unitPriceBRL = deriveUnitPrice(data, side);
   if (unitPriceBRL === null) {
     throw new Error(
-      `Cotação-base sem preço reconhecível para ${asset}: ${JSON.stringify(primary).slice(0, 300)}`,
+      `Cotação-base sem preço reconhecível para ${asset}: ${JSON.stringify(data).slice(0, 300)}`,
     );
   }
-  return { unitPriceBRL, rawTicker: primary, source: "quote" };
+  return { unitPriceBRL, rawTicker: data, source };
+}
+
+export interface TickerSidesResult {
+  /** Preco para o cliente COMPRAR o ativo (ask), em BRL — sem fee. */
+  askBRL: number;
+  /** Preco para o cliente VENDER o ativo (bid), em BRL — sem fee. */
+  bidBRL: number;
+  rawTicker: MutualQuoteData;
+  source: PriceSource;
+}
+
+/**
+ * Os DOIS lados do book em UMA requisicao (a resposta ticker ja traz bid e ask).
+ *
+ * Invariante garantida: askBRL >= bidBRL. Se a resposta vier invertida (dado
+ * estranho / fallback para "last"), os lados sao normalizados para nunca
+ * cotar uma venda acima da compra.
+ */
+export async function fetchTickerBRL(
+  clients: MutualClients,
+  asset: string,
+  referenceBrlAmount: number,
+  tickerFallback = true,
+): Promise<TickerSidesResult> {
+  const { data, source } = await fetchRawTicker(clients, asset, referenceBrlAmount, tickerFallback);
+
+  const ask = deriveUnitPrice(data, "buy");
+  const bid = deriveUnitPrice(data, "sell");
+  if (ask === null && bid === null) {
+    throw new Error(
+      `Cotação-base sem preço reconhecível para ${asset}: ${JSON.stringify(data).slice(0, 300)}`,
+    );
+  }
+
+  const a = ask ?? (bid as number);
+  const b = bid ?? (ask as number);
+  return {
+    askBRL: Math.max(a, b),
+    bidBRL: Math.min(a, b),
+    rawTicker: data,
+    source,
+  };
 }

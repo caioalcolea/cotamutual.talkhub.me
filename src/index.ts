@@ -52,6 +52,7 @@ async function main(): Promise<void> {
     config.quoteReferenceBrlAmount,
     groupMatcher,
     config.quoteTickerFallback,
+    config.quoteShowUsd,
   );
   const queue = new QuoteQueue(
     engine,
@@ -59,6 +60,7 @@ async function main(): Promise<void> {
     quoteLog,
     config.quoteQueueMessages,
     config.quoteQueueIntervalMs,
+    config.quoteSettlementLabel,
   );
   const processor = new MessageProcessor(
     config,

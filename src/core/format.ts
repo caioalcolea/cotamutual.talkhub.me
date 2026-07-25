@@ -1,14 +1,30 @@
 /**
- * Formatacao das respostas enviadas ao grupo (secao 14 do descritivo).
+ * Formatacao das respostas enviadas ao grupo.
  *
- * Por padrao o grupo NUNCA ve: feePercentage, feeFixed, preco-base sem fee,
- * merchantId ou detalhes internos. Apenas a cotacao final.
+ * Formato da cotacao (mesa OTC — os dois lados na mesma mensagem):
  *
- * IMPORTANTE (regra do produto): nenhuma mensagem cita "bot ligado/desligado".
- * Quando um recurso nao esta ativo, a mensagem informa apenas que a operacao
- * sera concluida manualmente por um operador da Mutual.
+ *   💱 Cotação · USDT D0 • 🇧🇷 USDT/BRL · 3/10
+ *
+ *   🟢 Compra: 1 USDT = R$ 5,0051
+ *   50k USDT = R$ 250.255,00
+ *   🔴 Venda: 1 USDT = R$ 4,9891
+ *   50k USDT = R$ 249.455,00
+ *   🧾 Digite
+ *   → /compra 50k USDT
+ *   → /venda 50k USDT
+ *
+ *   ⚡ Valores sujeitos à confirmação no fechamento.
+ *
+ * O grupo NUNCA ve feePercentage, feeFixed, preco-base sem fee, merchantId ou
+ * detalhes internos — apenas os precos finais.
+ *
+ * BLINDAGEM: um lado sem fee cadastrada (ou com preco invalido) sai como
+ * "sob consulta" e o comando daquele lado nao e oferecido — nunca um numero
+ * errado. Nenhuma mensagem cita "bot ligado/desligado": recursos inativos
+ * informam apenas que a operacao sera concluida manualmente pela Mutual.
  */
 
+import type { SideQuote } from "./engine.js";
 import type { QuoteCalculation } from "./pricing.js";
 
 const brl2 = new Intl.NumberFormat("pt-BR", {
@@ -22,9 +38,12 @@ export function formatBRL(value: number): string {
   return brl2.format(value);
 }
 
-/** Preco unitario em BRL com mais casas (ex: R$ 5,30063). */
+/**
+ * Preco unitario em BRL no padrao da mesa (ex: R$ 5,0051):
+ * 4 casas para precos correntes, 2 para precos altos, 8 para fracionarios.
+ */
 export function formatUnitBRL(value: number): string {
-  const decimals = value >= 100 ? 2 : value >= 1 ? 5 : 8;
+  const decimals = value >= 100 ? 2 : value >= 1 ? 4 : 8;
   const formatted = new Intl.NumberFormat("pt-BR", {
     minimumFractionDigits: 2,
     maximumFractionDigits: decimals,
@@ -40,6 +59,21 @@ export function formatQty(value: number): string {
   }).format(value);
 }
 
+/**
+ * Quantidade para exibicao no grupo: casas proporcionais a magnitude
+ * (998,98 USDT · 0,00123456 BTC) — evita numeros ilegiveis quando a
+ * quantidade e derivada de um orcamento em BRL.
+ */
+export function formatQtyDisplay(value: number): string {
+  const decimals = value >= 100 ? 2 : value >= 1 ? 6 : 8;
+  return new Intl.NumberFormat("pt-BR", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: decimals,
+  }).format(value);
+}
+
+// --- Dolar: pronto para uso futuro (bloco desligado nesta fase) -------------
+
 const usd2 = new Intl.NumberFormat("pt-BR", {
   style: "currency",
   currency: "USD",
@@ -51,7 +85,6 @@ export function formatUSD(value: number): string {
   return usd2.format(value);
 }
 
-/** Preco unitario em USD com mais casas (ex: US$ 1,00058). */
 export function formatUnitUSD(value: number): string {
   const decimals = value >= 100 ? 2 : value >= 0.1 ? 5 : 8;
   const formatted = new Intl.NumberFormat("pt-BR", {
@@ -61,153 +94,157 @@ export function formatUnitUSD(value: number): string {
   return `US$ ${formatted}`;
 }
 
-export interface QuoteMessageContext {
-  sourceAsset: string;
-  destinationAsset: string;
+// ---------------------------------------------------------------------------
+// Cotacao do par (dois lados)
+// ---------------------------------------------------------------------------
+
+export interface PairQuoteMessageContext {
+  asset: string;
+  sizeKind: "asset" | "brl";
+  /** Valor como digitado pelo cliente (ex: "50k") — usado nas linhas e dicas. */
+  amountRaw: string;
+  amount: number;
+  buy: SideQuote | null;
+  sell: SideQuote | null;
   sequence: number;
   total: number;
-  result: QuoteCalculation;
-  /** Cotacao atual do dolar em BRL — habilita o bloco em USD da mensagem. */
+  /** Rotulo de liquidacao exibido no cabecalho (ex: "D0"). */
+  settlementLabel: string;
+  /** Cotacao do dolar — quando presente, adiciona o bloco em USD. */
   usdRateBRL?: number | null;
 }
 
-/**
- * Mensagem de cotacao enviada ao grupo (uma por posicao da fila).
- * Sempre em REAL e, quando ha cotacao do dolar disponivel, tambem em DOLAR:
- *
- *   📊 Cotação BRL → USDT (3/10)
- *   1.000 USDT = R$ 5.147,46
- *   1 USDT = R$ 5,14746
- *
- *   📊 Cotação USD → USDT (3/10)
- *   1.000 USDT = US$ 1.000,52
- *   1 USDT = US$ 1,00052
- */
-export function formatQuoteMessage(ctx: QuoteMessageContext): string {
-  const { sourceAsset, destinationAsset, sequence, total, result } = ctx;
-  const header = `📊 Cotação ${sourceAsset} → ${destinationAsset} (${sequence}/${total})`;
-  const usd = Number(ctx.usdRateBRL);
-  const hasUsd = Number.isFinite(usd) && usd > 0;
-
-  if (result.kind === "asset-purchase") {
-    const brlBlock = [
-      header,
-      // Quantidade 1: usa a formatacao de preco unitario (mais casas decimais).
-      `${formatQty(result.quantity)} ${destinationAsset} = ${
-        result.quantity === 1 ? formatUnitBRL(result.finalTotal) : formatBRL(result.finalTotal)
-      }`,
-      result.quantity !== 1 ? `1 ${destinationAsset} = ${formatUnitBRL(result.finalUnitPrice)}` : null,
-    ]
-      .filter(Boolean)
-      .join("\n");
-
-    if (!hasUsd) return brlBlock;
-    const usdBlock = [
-      `📊 Cotação USD → ${destinationAsset} (${sequence}/${total})`,
-      `${formatQty(result.quantity)} ${destinationAsset} = ${
-        result.quantity === 1
-          ? formatUnitUSD(result.finalTotal / usd)
-          : formatUSD(result.finalTotal / usd)
-      }`,
-      result.quantity !== 1
-        ? `1 ${destinationAsset} = ${formatUnitUSD(result.finalUnitPrice / usd)}`
-        : null,
-    ]
-      .filter(Boolean)
-      .join("\n");
-    return `${brlBlock}\n\n${usdBlock}`;
+/** Linha do tamanho negociado, por lado. */
+function sizeLine(ctx: PairQuoteMessageContext, side: SideQuote): string | null {
+  if (ctx.sizeKind === "brl") {
+    // Compra: paga R$ X e recebe Y. Venda: entrega Y e recebe R$ X.
+    return side.side === "buy"
+      ? `${formatBRL(side.totalBRL)} = ${formatQtyDisplay(side.quantity)} ${ctx.asset}`
+      : `${formatQtyDisplay(side.quantity)} ${ctx.asset} = ${formatBRL(side.totalBRL)}`;
   }
-
-  if (result.kind === "brl-budget") {
-    const brlBlock = [
-      header,
-      `${formatBRL(result.amountBRL)} = ${formatQty(result.quantity)} ${destinationAsset}`,
-      `1 ${destinationAsset} = ${formatUnitBRL(result.finalUnitPrice)}`,
-    ].join("\n");
-
-    if (!hasUsd) return brlBlock;
-    const usdBlock = [
-      `📊 Cotação USD → ${destinationAsset} (${sequence}/${total})`,
-      `${formatUSD(result.amountBRL / usd)} = ${formatQty(result.quantity)} ${destinationAsset}`,
-      `1 ${destinationAsset} = ${formatUnitUSD(result.finalUnitPrice / usd)}`,
-    ].join("\n");
-    return `${brlBlock}\n\n${usdBlock}`;
-  }
-
-  // receive-side: venda para BRL ou conversao com recebimento no destino.
-  if (destinationAsset === "BRL") {
-    const brlBlock = [
-      header,
-      `${formatQty(result.quantity)} ${sourceAsset} = ${
-        result.quantity === 1 ? formatUnitBRL(result.netAmount) : formatBRL(result.netAmount)
-      }`,
-      result.quantity !== 1 ? `1 ${sourceAsset} = ${formatUnitBRL(result.finalUnitPrice)}` : null,
-    ]
-      .filter(Boolean)
-      .join("\n");
-
-    if (!hasUsd) return brlBlock;
-    const usdBlock = [
-      `📊 Cotação ${sourceAsset} → USD (${sequence}/${total})`,
-      `${formatQty(result.quantity)} ${sourceAsset} = ${
-        result.quantity === 1
-          ? formatUnitUSD(result.netAmount / usd)
-          : formatUSD(result.netAmount / usd)
-      }`,
-      result.quantity !== 1
-        ? `1 ${sourceAsset} = ${formatUnitUSD(result.finalUnitPrice / usd)}`
-        : null,
-    ]
-      .filter(Boolean)
-      .join("\n");
-    return `${brlBlock}\n\n${usdBlock}`;
-  }
-
-  // Cripto -> cripto: sem perna BRL, sem bloco em dolar.
-  return [
-    header,
-    `${formatQty(result.quantity)} ${sourceAsset} = ${formatQty(result.netAmount)} ${destinationAsset}`,
-    result.quantity !== 1
-      ? `1 ${sourceAsset} = ${formatQty(result.finalUnitPrice)} ${destinationAsset}`
-      : null,
-  ]
-    .filter(Boolean)
-    .join("\n");
+  // Quantidade 1: a linha do tamanho repetiria o preco unitario.
+  if (ctx.amount === 1) return null;
+  return `${ctx.amountRaw} ${ctx.asset} = ${formatBRL(side.totalBRL)}`;
 }
 
-/** Resumo curto da ultima cotacao (usado na mensagem de encerramento por compra). */
-export function formatQuoteSummary(ctx: Omit<QuoteMessageContext, "sequence" | "total">): string {
+function sideBlock(
+  ctx: PairQuoteMessageContext,
+  label: string,
+  emoji: string,
+  side: SideQuote | null,
+): string[] {
+  if (!side) return [`${emoji} ${label}: ${MESSAGES.sideUnavailable}`];
+  const lines = [`${emoji} ${label}: 1 ${ctx.asset} = ${formatUnitBRL(side.unitPrice)}`];
+  const size = sizeLine(ctx, side);
+  if (size) lines.push(size);
+  return lines;
+}
+
+export function formatPairQuoteMessage(ctx: PairQuoteMessageContext): string {
+  const sizeArgs =
+    ctx.sizeKind === "brl" ? `${ctx.amountRaw} BRL ${ctx.asset}` : `${ctx.amountRaw} ${ctx.asset}`;
+
+  const lines: string[] = [
+    `💱 Cotação · ${ctx.asset} ${ctx.settlementLabel} • 🇧🇷 ${ctx.asset}/BRL · ${ctx.sequence}/${ctx.total}`,
+    "",
+    ...sideBlock(ctx, "Compra", "🟢", ctx.buy),
+    ...sideBlock(ctx, "Venda", "🔴", ctx.sell),
+  ];
+
+  // Bloco em dolar (desligado nesta fase; mantido para uso futuro).
+  const usd = Number(ctx.usdRateBRL);
+  if (Number.isFinite(usd) && usd > 0) {
+    if (ctx.buy) lines.push(`💵 Compra: 1 ${ctx.asset} = ${formatUnitUSD(ctx.buy.unitPrice / usd)}`);
+    if (ctx.sell) lines.push(`💵 Venda: 1 ${ctx.asset} = ${formatUnitUSD(ctx.sell.unitPrice / usd)}`);
+  }
+
+  lines.push("🧾 Digite");
+  if (ctx.buy) lines.push(`→ /compra ${sizeArgs}`);
+  if (ctx.sell) lines.push(`→ /venda ${sizeArgs}`);
+
+  lines.push("", "⚡ Valores sujeitos à confirmação no fechamento.");
+
+  // Aviso honesto quando um dos lados nao esta disponivel.
+  if (!ctx.buy || !ctx.sell) {
+    const missing = !ctx.buy ? "compra" : "venda";
+    lines.push(`ℹ️ A ${missing} deste par será conduzida manualmente por um operador da Mutual.`);
+  }
+
+  return lines.join("\n");
+}
+
+/** Cotacao cripto -> cripto (sem perna em BRL): direcao unica. */
+export interface CrossQuoteMessageContext {
+  sourceAsset: string;
+  destinationAsset: string;
+  amountRaw: string;
+  amount: number;
+  result: QuoteCalculation;
+  sequence: number;
+  total: number;
+  settlementLabel: string;
+}
+
+export function formatCrossQuoteMessage(ctx: CrossQuoteMessageContext): string {
   const { sourceAsset, destinationAsset, result } = ctx;
-  if (result.kind === "asset-purchase") {
-    return `${formatQty(result.quantity)} ${destinationAsset} = ${formatBRL(result.finalTotal)}`;
+  const unit = result.finalUnitPrice;
+  const totalOut = result.kind === "receive-side" ? result.netAmount : 0;
+
+  const lines = [
+    `💱 Cotação · ${sourceAsset} ${ctx.settlementLabel} • ${sourceAsset}/${destinationAsset} · ${ctx.sequence}/${ctx.total}`,
+    "",
+    `🔁 Conversão: 1 ${sourceAsset} = ${formatQty(unit)} ${destinationAsset}`,
+  ];
+  if (ctx.amount !== 1) {
+    lines.push(`${ctx.amountRaw} ${sourceAsset} = ${formatQty(totalOut)} ${destinationAsset}`);
   }
-  if (result.kind === "brl-budget") {
-    return `${formatBRL(result.amountBRL)} = ${formatQty(result.quantity)} ${destinationAsset}`;
-  }
-  if (destinationAsset === "BRL") {
-    return `${formatQty(result.quantity)} ${sourceAsset} = ${formatBRL(result.netAmount)}`;
-  }
-  return `${formatQty(result.quantity)} ${sourceAsset} = ${formatQty(result.netAmount)} ${destinationAsset}`;
+  lines.push(
+    "🧾 Digite",
+    `→ /compra ${ctx.amountRaw} ${sourceAsset} ${destinationAsset}`,
+    "",
+    "⚡ Valores sujeitos à confirmação no fechamento.",
+  );
+  return lines.join("\n");
+}
+
+/** Resumo curto da ultima cotacao (painel e logs). */
+export function formatPairSummary(ctx: {
+  asset: string;
+  amountRaw: string;
+  sizeKind: "asset" | "brl";
+  buy: SideQuote | null;
+  sell: SideQuote | null;
+}): string {
+  const size = ctx.sizeKind === "brl" ? `${ctx.amountRaw} BRL` : `${ctx.amountRaw} ${ctx.asset}`;
+  const parts = [
+    ctx.buy ? `compra ${formatUnitBRL(ctx.buy.unitPrice)}` : "compra sob consulta",
+    ctx.sell ? `venda ${formatUnitBRL(ctx.sell.unitPrice)}` : "venda sob consulta",
+  ];
+  return `${size} · ${parts.join(" · ")}`;
 }
 
 // ---------------------------------------------------------------------------
-// Registro de operacao (emitido pelo /COMPRAR na fase de operacao manual)
+// Registro de operacao (emitido pelo /COMPRA e /VENDA na conclusao manual)
 // ---------------------------------------------------------------------------
 
 export interface OperationRecordParams {
   groupId: string;
   transactionId: string;
   date: Date;
-  operation: string; // buy | sell | conversion
-  sourceAsset: string;
-  destinationAsset: string;
-  result: QuoteCalculation;
+  /** "buy" | "sell" para pares; "conversion" para cripto -> cripto. */
+  side: "buy" | "sell" | "conversion";
+  asset: string;
+  counterAsset: string;
+  quantity: number;
+  /** Total na moeda/ativo de contrapartida. */
+  counterTotal: number;
+  unitPrice: number;
 }
 
-function operationTypeLabel(operation: string, sourceAsset: string, destinationAsset: string): string {
-  if (operation === "buy") return `COMPRA ${destinationAsset}`;
-  if (operation === "sell") return `VENDA ${sourceAsset}`;
-  return `CONVERSÃO ${sourceAsset} → ${destinationAsset}`;
+function operationTypeLabel(params: OperationRecordParams): string {
+  if (params.side === "buy") return `COMPRA ${params.asset}`;
+  if (params.side === "sell") return `VENDA ${params.asset}`;
+  return `CONVERSÃO ${params.asset} → ${params.counterAsset}`;
 }
 
 /**
@@ -216,7 +253,8 @@ function operationTypeLabel(operation: string, sourceAsset: string, destinationA
  * "Pendente" = valor integral, pois a conclusao e manual nesta fase.
  */
 export function formatOperationRecord(params: OperationRecordParams): string {
-  const { groupId, transactionId, date, operation, sourceAsset, destinationAsset, result } = params;
+  const { groupId, transactionId, date, asset, counterAsset, quantity, counterTotal } = params;
+  const isBRL = counterAsset === "BRL";
 
   const dateStr = new Intl.DateTimeFormat("pt-BR", {
     timeZone: "America/Sao_Paulo",
@@ -229,7 +267,12 @@ export function formatOperationRecord(params: OperationRecordParams): string {
     .format(date)
     .replace(",", "");
 
-  const lines: string[] = [
+  const unitLabel = isBRL
+    ? `1 ${asset} = ${formatUnitBRL(params.unitPrice)}`
+    : `1 ${asset} = ${formatQty(params.unitPrice)} ${counterAsset}`;
+  const counterLabel = isBRL ? formatBRL(counterTotal) : `${formatQty(counterTotal)} ${counterAsset}`;
+
+  return [
     "ID do grupo:",
     groupId,
     "",
@@ -240,54 +283,19 @@ export function formatOperationRecord(params: OperationRecordParams): string {
     dateStr,
     "",
     "Tipo de Operação:",
-    operationTypeLabel(operation, sourceAsset, destinationAsset),
+    operationTypeLabel(params),
     "",
-  ];
-
-  if (result.kind === "asset-purchase" || result.kind === "brl-budget") {
-    const qty = result.quantity;
-    const brl = result.kind === "asset-purchase" ? result.finalTotal : result.amountBRL;
-    lines.push(
-      "Cotação:",
-      `1 ${destinationAsset} = ${formatUnitBRL(result.finalUnitPrice)}`,
-      "",
-      `💵 Montante em ${destinationAsset}:`,
-      `Total: ${formatQty(qty)} ${destinationAsset}`,
-      `Pendente: ${formatQty(qty)} ${destinationAsset}`,
-      "",
-      "💼 Montante em BRL:",
-      `Total: ${formatBRL(brl)}`,
-      `Pendente: ${formatBRL(brl)}`,
-    );
-  } else if (destinationAsset === "BRL") {
-    lines.push(
-      "Cotação:",
-      `1 ${sourceAsset} = ${formatUnitBRL(result.finalUnitPrice)}`,
-      "",
-      `💵 Montante em ${sourceAsset}:`,
-      `Total: ${formatQty(result.quantity)} ${sourceAsset}`,
-      `Pendente: ${formatQty(result.quantity)} ${sourceAsset}`,
-      "",
-      "💼 Montante em BRL:",
-      `Total: ${formatBRL(result.netAmount)}`,
-      `Pendente: ${formatBRL(result.netAmount)}`,
-    );
-  } else {
-    lines.push(
-      "Cotação:",
-      `1 ${sourceAsset} = ${formatQty(result.finalUnitPrice)} ${destinationAsset}`,
-      "",
-      `💵 Montante em ${sourceAsset}:`,
-      `Total: ${formatQty(result.quantity)} ${sourceAsset}`,
-      `Pendente: ${formatQty(result.quantity)} ${sourceAsset}`,
-      "",
-      `💼 Montante em ${destinationAsset}:`,
-      `Total: ${formatQty(result.netAmount)} ${destinationAsset}`,
-      `Pendente: ${formatQty(result.netAmount)} ${destinationAsset}`,
-    );
-  }
-
-  return lines.join("\n");
+    "Cotação:",
+    unitLabel,
+    "",
+    `💵 Montante em ${asset}:`,
+    `Total: ${formatQty(quantity)} ${asset}`,
+    `Pendente: ${formatQty(quantity)} ${asset}`,
+    "",
+    `💼 Montante em ${counterAsset}:`,
+    `Total: ${counterLabel}`,
+    `Pendente: ${counterLabel}`,
+  ].join("\n");
 }
 
 // ---------------------------------------------------------------------------
@@ -295,86 +303,88 @@ export function formatOperationRecord(params: OperationRecordParams): string {
 // ---------------------------------------------------------------------------
 
 export const MESSAGES = {
+  /** Lado sem fee cadastrada ou com preco nao confiavel. */
+  sideUnavailable: "sob consulta",
+
   groupNotLinked:
     "⚠️ Este grupo ainda não está vinculado a um cliente habilitado para cotações.",
 
-  feeNotConfigured:
-    "⚠️ Não há taxa configurada para esta operação neste cliente.",
+  feeNotConfigured: "⚠️ Não há taxa configurada para esta operação neste cliente.",
 
   unsupportedOperation: (source: string, destination: string): string =>
     `⚠️ Operação não suportada: ${source} → ${destination}.`,
 
-  quoteFailed:
-    "⚠️ Não foi possível gerar a cotação agora. Tente novamente em instantes.",
+  quoteFailed: "⚠️ Não foi possível gerar a cotação agora. Tente novamente em instantes.",
 
   // Cotacoes tratadas manualmente (recurso de cotacao inativo no painel).
   quotesManual:
     "📩 Solicitação recebida! Esta cotação será conduzida manualmente por um operador da Mutual. Aguarde o retorno aqui no grupo.",
 
-  // Encerramento padrao da compra manual: NUNCA citar bot/estado.
+  // Encerramento padrao da operacao manual: NUNCA citar bot/estado.
   manualClosing:
     "A operação será concluída manualmente por um operador da Mutual. Aguarde a confirmação aqui no grupo. 🤝",
 
-  // Compra ativada no painel, mas fase de ordens ainda desabilitada (secao 16).
+  // Compra ativada no painel, mas fase de ordens ainda desabilitada.
   ordersNotEnabledClosing:
     "ℹ️ A execução automática de ordens ainda não está habilitada.\nA operação será concluída manualmente por um operador da Mutual. Aguarde a confirmação aqui no grupo.",
 
-  // Compra com registro completo da operacao (quando ha cotacao recente).
-  buyWithRecord: (record: string, closing: string): string =>
+  tradeWithRecord: (record: string, closing: string): string =>
     `✅ Pedido recebido!\n\n${record}\n\n${closing}`,
 
-  // Compra sem cotacao valida no grupo (nenhuma, expirada ou ja consumida
-  // por um /COMPRAR anterior): exige cotacao atualizada antes de confirmar.
-  buyNeedQuote: [
+  // Sem cotacao valida (nenhuma, expirada ou ja consumida por outra confirmacao).
+  tradeNeedQuote: [
     "ℹ️ Para confirmar a operação é preciso uma cotação atualizada — os preços mudam a cada segundo e cada cotação vale para uma única confirmação.",
-    "Envie /COTAR (ex: /COTAR 25K USDT) e confirme com /COMPRAR em seguida.",
+    "Envie /COTAR (ex: /COTAR 50K USDT) e confirme com /COMPRA ou /VENDA.",
   ].join("\n"),
 
-  // /COMPRAR com argumentos que nao batem com a cotacao ativa.
-  buyMismatch: (activeSummary: string | null, requested: string): string =>
+  // Lado pedido nao esta disponivel na cotacao ativa.
+  tradeSideUnavailable: (side: "buy" | "sell"): string =>
+    [
+      `⚠️ A ${side === "buy" ? "compra" : "venda"} deste par ainda não está configurada para este cliente.`,
+      "A operação será conduzida manualmente por um operador da Mutual.",
+    ].join("\n"),
+
+  // Argumentos do /COMPRA ou /VENDA nao batem com a cotacao ativa.
+  tradeMismatch: (activeSummary: string | null, requested: string): string =>
     [
       activeSummary
         ? `⚠️ A cotação ativa é: ${activeSummary}`
         : "⚠️ Não há cotação ativa para esse pedido.",
-      `Para operar ${requested}, gere uma cotação atualizada: envie /COTAR ${requested} e confirme com /COMPRAR.`,
+      `Para operar ${requested}, gere uma cotação atualizada: envie /COTAR ${requested} e confirme em seguida.`,
     ].join("\n"),
 
-  // /COMPRAR com argumentos incompreensiveis.
-  buyArgsNotUnderstood: (activeSummary: string | null): string =>
+  tradeArgsNotUnderstood: (activeSummary: string | null): string =>
     [
       "⚠️ Não entendi os detalhes do pedido.",
       activeSummary ? `A cotação ativa é: ${activeSummary}` : null,
-      "Envie /COMPRAR (sem argumentos) para confirmar a cotação ativa, ou /COTAR <valor> <ativo> para uma nova cotação.",
+      "Envie /COMPRA ou /VENDA (sem argumentos) para confirmar a cotação ativa, ou /COTAR <valor> <ativo> para uma nova cotação.",
     ]
       .filter(Boolean)
       .join("\n"),
 
   queueFinished: (total: number): string =>
-    `✅ Fila de cotações concluída (${total} atualizações de preço). Envie /COTAR para uma nova cotação ou /COMPRAR para fechar a operação.`,
+    `✅ Fila de cotações concluída (${total} atualizações de preço). Envie /COTAR para uma nova cotação ou /COMPRA · /VENDA para fechar a operação.`,
 
   usageQuote: [
     "ℹ️ Formatos aceitos:",
-    "/COTAR 25K USDT — comprar 25.000 USDT com BRL",
-    "/COTAR 5000 BRL USDT — usar R$ 5.000,00 de orçamento",
-    "/COTAR 1 BTC BRL — vender 1 BTC para BRL",
-    "/COTAR 1 BTC USDT — converter entre criptoativos",
+    "/COTAR 50K USDT — cotação de compra e venda de 50.000 USDT",
+    "/COTAR 5000 BRL USDT — usando R$ 5.000,00 como referência",
+    "/COTAR 1 BTC BRL — cotação do par BTC/BRL",
+    "/COTAR 1 BTC USDT — conversão entre criptoativos",
   ].join("\n"),
-
-  usageSell: "ℹ️ Formato: /VENDER <quantidade> <ativo> — ex: /VENDER 1 BTC",
 
   unknownAsset:
     "⚠️ Ativo não reconhecido. Ativos disponíveis: BRL, BTC, ETH, USDT, USDC (USD/dólar = USDC).",
 
   help: [
     "🤖 Comandos disponíveis:",
-    "/COTAR 25K USDT — cotação para comprar 25.000 USDT com BRL",
-    "/COTAR 5000 BRL USDT — cotação usando R$ 5.000,00 como orçamento",
-    "/COTAR 5000 BRL USD — câmbio BRL → dólar (USDC)",
-    "/COTAR 1 BTC BRL — venda de 1 BTC para BRL",
+    "/COTAR 50K USDT — cotação de compra e venda do par USDT/BRL",
+    "/COTAR 5000 BRL USDT — cotação usando R$ 5.000,00 como referência",
+    "/COTAR 1 BTC BRL — cotação do par BTC/BRL",
     "/COTAR 1 BTC USDT — conversão entre criptoativos",
-    "/REF 25K USDT — atalho equivalente ao /COTAR",
-    "/COMPRAR — encerra a fila de cotações e inicia a operação",
+    "/COMPRA 50K USDT — confirma a compra na cotação ativa",
+    "/VENDA 50K USDT — confirma a venda na cotação ativa",
     "",
-    "Cada cotação envia uma sequência de atualizações de preço em tempo real.",
+    "Cada cotação envia uma sequência de atualizações de preço em tempo real e vale para uma única confirmação.",
   ].join("\n"),
 } as const;

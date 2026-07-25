@@ -1,19 +1,24 @@
 /**
- * Interpretacao dos comandos iniciados por "/" (secao 13 do descritivo).
+ * Interpretacao dos comandos iniciados por "/".
  *
- * Exemplos aceitos:
- *   /REF 25K USDT            -> BRL -> USDT (quantidade do ativo)
- *   /COTAR 25K USDT          -> BRL -> USDT (quantidade do ativo)
- *   /COTAR 5000 BRL USDT     -> orcamento em BRL
- *   /COTAR 5000 BRL USD      -> BRL -> USDC (conversion)
- *   /COTAR 1 BTC BRL         -> venda (sell)
- *   /COTAR 25000 USDT BRL    -> venda (sell)
+ * Cotacao (mostra os DOIS lados do par — compra e venda):
+ *   /COTAR 50K USDT          -> par USDT/BRL, tamanho 50.000 USDT
+ *   /REF 25K USDT            -> idem
+ *   /COTAR 5000 BRL USDT     -> par USDT/BRL, tamanho R$ 5.000 (orcamento)
+ *   /COTAR 1 BTC BRL         -> par BTC/BRL, tamanho 1 BTC
  *   /COTAR 1 BTC USDT        -> conversao cripto -> cripto
- *   /VENDER 1 BTC            -> atalho de venda para BRL
- *   /COMPRAR | /ORDER        -> intencao de compra (interrompe a fila)
+ *
+ * Confirmacao (consome a cotacao ativa do grupo):
+ *   /COMPRA [50K USDT]       -> confirma o lado COMPRA
+ *   /VENDA  [50K USDT]       -> confirma o lado VENDA
  */
 
 import { isKnownAsset, normalizeAsset } from "./assets.js";
+
+export type TradeSide = "buy" | "sell";
+
+/** Como o tamanho da operacao foi informado. */
+export type SizeKind = "asset" | "brl";
 
 export type ParsedCommand =
   | {
@@ -23,24 +28,29 @@ export type ParsedCommand =
       amount: number;
       /** "source": amount na unidade de origem. "destination": quantidade do ativo de destino. */
       amountKind: "source" | "destination";
+      /** Token do valor exatamente como digitado (ex: "50k") — usado nas dicas. */
+      amountRaw: string;
       raw: string;
     }
   | {
-      kind: "buy";
+      kind: "trade";
+      side: TradeSide;
       raw: string;
-      /** true quando o usuario passou argumentos (ex: /COMPRAR 1K BTC). */
+      /** true quando o usuario passou argumentos (ex: /COMPRA 50K USDT). */
       argsPresent: boolean;
       /** false quando os argumentos nao foram compreendidos. */
       argsValid: boolean;
       amount?: number;
+      amountRaw?: string;
+      sizeKind?: SizeKind;
       asset?: string;
     }
   | { kind: "help"; raw: string }
   | { kind: "invalid"; reason: string; raw: string };
 
-const QUOTE_COMMANDS = new Set(["COTAR", "REF", "COTACAO", "COTAÇÃO"]);
-const BUY_COMMANDS = new Set(["COMPRAR", "ORDER", "ORDEM", "BUY", "FECHAR"]);
-const SELL_COMMANDS = new Set(["VENDER", "SELL", "VENDA"]);
+const QUOTE_COMMANDS = new Set(["COTAR", "REF", "COTACAO", "COTAÇÃO", "COTACOES", "COTAÇÕES"]);
+const BUY_COMMANDS = new Set(["COMPRA", "COMPRAR", "BUY", "ORDER", "ORDEM", "FECHAR"]);
+const SELL_COMMANDS = new Set(["VENDA", "VENDER", "SELL"]);
 const HELP_COMMANDS = new Set(["AJUDA", "HELP", "MENU", "COMANDOS"]);
 
 /**
@@ -79,6 +89,88 @@ export function parseAmount(raw: string): number | null {
   return value;
 }
 
+/** Interpreta os argumentos de /COMPRA e /VENDA. */
+function parseTradeArgs(side: TradeSide, args: string[], raw: string): ParsedCommand {
+  if (args.length === 0) {
+    return { kind: "trade", side, raw, argsPresent: false, argsValid: true };
+  }
+
+  // /COMPRA USDT
+  if (args.length === 1) {
+    const asset = normalizeAsset(args[0]);
+    if (isKnownAsset(asset) && asset !== "BRL") {
+      return { kind: "trade", side, raw, argsPresent: true, argsValid: true, asset };
+    }
+    const amount = parseAmount(args[0]);
+    if (amount !== null) {
+      return {
+        kind: "trade",
+        side,
+        raw,
+        argsPresent: true,
+        argsValid: true,
+        amount,
+        amountRaw: args[0],
+        sizeKind: "asset",
+      };
+    }
+    return { kind: "trade", side, raw, argsPresent: true, argsValid: false };
+  }
+
+  const amount = parseAmount(args[0]);
+
+  // /COMPRA 5000 BRL USDT  (tamanho em BRL)
+  if (args.length >= 3) {
+    const first = normalizeAsset(args[1]);
+    const second = normalizeAsset(args[2]);
+    if (amount !== null && first === "BRL" && isKnownAsset(second) && second !== "BRL") {
+      return {
+        kind: "trade",
+        side,
+        raw,
+        argsPresent: true,
+        argsValid: true,
+        amount,
+        amountRaw: args[0],
+        sizeKind: "brl",
+        asset: second,
+      };
+    }
+    // /COMPRA 1 BTC BRL -> tamanho em ativo
+    if (amount !== null && isKnownAsset(first) && first !== "BRL" && second === "BRL") {
+      return {
+        kind: "trade",
+        side,
+        raw,
+        argsPresent: true,
+        argsValid: true,
+        amount,
+        amountRaw: args[0],
+        sizeKind: "asset",
+        asset: first,
+      };
+    }
+    return { kind: "trade", side, raw, argsPresent: true, argsValid: false };
+  }
+
+  // /COMPRA 50K USDT
+  const asset = normalizeAsset(args[1]);
+  if (amount !== null && isKnownAsset(asset) && asset !== "BRL") {
+    return {
+      kind: "trade",
+      side,
+      raw,
+      argsPresent: true,
+      argsValid: true,
+      amount,
+      amountRaw: args[0],
+      sizeKind: "asset",
+      asset,
+    };
+  }
+  return { kind: "trade", side, raw, argsPresent: true, argsValid: false };
+}
+
 /** Retorna null quando a mensagem NAO e um comando (deve ser ignorada). */
 export function parseCommand(text: string | null | undefined): ParsedCommand | null {
   const raw = String(text || "").trim();
@@ -95,50 +187,11 @@ export function parseCommand(text: string | null | undefined): ParsedCommand | n
   }
 
   if (BUY_COMMANDS.has(command)) {
-    // Argumentos do /COMPRAR sao lidos e conferidos contra a cotacao ativa:
-    //   /COMPRAR                -> confirma a cotacao ativa
-    //   /COMPRAR BTC            -> confirma se a cotacao ativa for de BTC
-    //   /COMPRAR 1K BTC         -> confirma se a cotacao ativa for de 1.000 BTC
-    if (args.length === 0) {
-      return { kind: "buy", raw, argsPresent: false, argsValid: true };
-    }
-    if (args.length === 1) {
-      const asset = normalizeAsset(args[0]);
-      if (isKnownAsset(asset) && asset !== "BRL") {
-        return { kind: "buy", raw, argsPresent: true, argsValid: true, asset };
-      }
-      const amount = parseAmount(args[0]);
-      if (amount !== null) {
-        return { kind: "buy", raw, argsPresent: true, argsValid: true, amount };
-      }
-      return { kind: "buy", raw, argsPresent: true, argsValid: false };
-    }
-    const amount = parseAmount(args[0]);
-    const asset = normalizeAsset(args[1]);
-    if (amount !== null && isKnownAsset(asset) && asset !== "BRL") {
-      return { kind: "buy", raw, argsPresent: true, argsValid: true, amount, asset };
-    }
-    return { kind: "buy", raw, argsPresent: true, argsValid: false };
+    return parseTradeArgs("buy", args, raw);
   }
 
   if (SELL_COMMANDS.has(command)) {
-    // /VENDER <qtd> <ativo> -> ativo -> BRL
-    if (args.length < 2) {
-      return { kind: "invalid", reason: "usage-sell", raw };
-    }
-    const amount = parseAmount(args[0]);
-    const source = normalizeAsset(args[1]);
-    if (amount === null || !isKnownAsset(source) || source === "BRL") {
-      return { kind: "invalid", reason: "usage-sell", raw };
-    }
-    return {
-      kind: "quote",
-      sourceAsset: source,
-      destinationAsset: "BRL",
-      amount,
-      amountKind: "source",
-      raw,
-    };
+    return parseTradeArgs("sell", args, raw);
   }
 
   if (!QUOTE_COMMANDS.has(command)) {
@@ -154,9 +207,10 @@ export function parseCommand(text: string | null | undefined): ParsedCommand | n
   if (amount === null) {
     return { kind: "invalid", reason: "usage-quote", raw };
   }
+  const amountRaw = args[0];
 
   if (args.length === 2) {
-    // /COTAR 25K USDT -> BRL -> ativo, quantidade do ATIVO de destino.
+    // /COTAR 25K USDT -> par ATIVO/BRL, tamanho na quantidade do ativo.
     const destination = normalizeAsset(args[1]);
     if (!isKnownAsset(destination)) {
       return { kind: "invalid", reason: "unknown-asset", raw };
@@ -170,6 +224,7 @@ export function parseCommand(text: string | null | undefined): ParsedCommand | n
       destinationAsset: destination,
       amount,
       amountKind: "destination",
+      amountRaw,
       raw,
     };
   }
@@ -190,6 +245,7 @@ export function parseCommand(text: string | null | undefined): ParsedCommand | n
     destinationAsset: destination,
     amount,
     amountKind: "source",
+    amountRaw,
     raw,
   };
 }

@@ -30,6 +30,13 @@ export interface AppConfig {
    * proprio ambiente configurado.
    */
   quoteTickerFallback: boolean;
+  /**
+   * Bloco em dolar na resposta do grupo. Desligado nesta fase — o codigo fica
+   * pronto (basta QUOTE_SHOW_USD=true) para quando a operacao em USD entrar.
+   */
+  quoteShowUsd: boolean;
+  /** Rotulo de liquidacao exibido no cabecalho da cotacao (ex: "D0"). */
+  quoteSettlementLabel: string;
 
   merchantCacheTtlMs: number;
   feeCacheTtlMs: number;
@@ -122,6 +129,8 @@ export function loadConfig(): AppConfig {
     quoteQueueIntervalMs: intEnv("QUOTE_QUEUE_INTERVAL_MS", 3000, 500),
     quoteReferenceBrlAmount: intEnv("QUOTE_REFERENCE_BRL_AMOUNT", 1000, 1),
     quoteTickerFallback: boolEnv("QUOTE_TICKER_FALLBACK", true),
+    quoteShowUsd: boolEnv("QUOTE_SHOW_USD", false),
+    quoteSettlementLabel: process.env.QUOTE_SETTLEMENT_LABEL?.trim() || "D0",
 
     merchantCacheTtlMs: intEnv("MERCHANT_CACHE_TTL_MS", 60_000, 5_000),
     feeCacheTtlMs: intEnv("FEE_CACHE_TTL_MS", 60_000, 5_000),

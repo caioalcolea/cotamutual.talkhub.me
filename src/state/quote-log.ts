@@ -16,10 +16,11 @@ export interface QuoteLogEntry {
   type:
     | "quote-tick"
     | "quote-manual"
-    | "buy-interrupt"
-    | "buy-manual"
-    | "buy-need-quote"
-    | "buy-mismatch"
+    | "trade-manual"
+    | "trade-orders-disabled"
+    | "trade-need-quote"
+    | "trade-side-unavailable"
+    | "trade-mismatch"
     | "queue-finished"
     | "error";
   channel: string;
