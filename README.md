@@ -11,7 +11,8 @@ Serviço que monitora mensagens de grupos (WhatsApp via **Evolution API v2**), i
 ## Regras centrais desta fase
 
 1. **Fila de cotações**: toda cotação envia **10 mensagens** em sequência (configurável), cada uma com **requisição própria** à Mutual — os preços variam de segundo a segundo, então nada de cache/reuso de ticker entre mensagens.
-2. **Interrupção por compra**: `/COMPRAR` (ou `/ORDER`) encerra a fila imediatamente.
+2. **Dois lados por cotação**: cada mensagem traz compra e venda do par, cada lado com a sua fee; lado sem fee cadastrada sai como *sob consulta*.
+2. **Interrupção por confirmação**: `/COMPRA` ou `/VENDA` encerra a fila imediatamente e consome a cotação (uma confirmação por cotação).
 3. **Compra sempre desligada por padrão**: o toggle "Compra (execução)" nasce **desligado** em todo canal/grupo e só é ativado **manualmente no painel**.
 4. **Sem citar estado do bot**: quando um recurso não está ativo, a resposta do grupo informa apenas que *a operação será concluída manualmente por um operador da Mutual* — nunca "bot desligado" ou similar.
 5. **Ordens nunca são criadas nesta fase**: `ORDERS_ENABLED=false` — o sistema **não chama** `POST /api/v2/crypto/orders` em hipótese alguma.
@@ -27,30 +28,30 @@ Mensagem no grupo
       ↓
 channel + groupId  →  merchant (linkGroups, status=active, linkGroup.active)
       ↓
-Comando (/COTAR, /REF, /VENDER, /COMPRAR, /AJUDA)
+Comando (/COTAR, /REF, /COMPRA, /VENDA, /AJUDA)
       ↓
 Toggles do painel (cotações? compra?)
       ↓
-resolveOperation (buy | conversion | sell)  →  fee exata do merchant
+lados do par: compra (buy/conversion) e venda (sell/conversion) → fees exatas
       ↓
-FILA: 10 × [requisição nova de cotação → fee aplicada → mensagem no grupo]
-      ↓                                     ↑ interrompida pelo /COMPRAR
+FILA: 10 × [ticker novo → fees dos dois lados → card compra/venda no grupo]
+      ↓                                  ↑ interrompida por /COMPRA ou /VENDA
 Registro completo no painel/log
 ```
 
 ### Comandos aceitos
 
-| Comando                 | Origem | Destino | Operação     | Interpretação do valor |
-| ----------------------- | ------ | ------- | ------------ | ---------------------- |
-| `/REF 25K USDT`         | BRL    | USDT    | `buy`        | quantidade do ativo    |
-| `/COTAR 25K USDT`       | BRL    | USDT    | `buy`        | quantidade do ativo    |
-| `/COTAR 5000 BRL USDT`  | BRL    | USDT    | `buy`        | orçamento em BRL       |
-| `/COTAR 5000 BRL USD`   | BRL    | USDC    | `conversion` | orçamento em BRL       |
-| `/COTAR 25000 USDC BRL` | USDC   | BRL     | `conversion` | quantidade da origem   |
-| `/COTAR 1 BTC USDT`     | BTC    | USDT    | `conversion` | quantidade da origem   |
-| `/COTAR 1 BTC BRL`      | BTC    | BRL     | `sell`       | quantidade da origem   |
-| `/VENDER 1 BTC`         | BTC    | BRL     | `sell`       | quantidade da origem   |
-| `/COMPRAR` · `/ORDER`   | —      | —       | —            | interrompe a fila      |
+| Comando | O que faz |
+| --- | --- |
+| `/COTAR 50K USDT` | cotação do par USDT/BRL para 50.000 USDT (compra **e** venda) |
+| `/REF 25K USDT` | idem (atalho) |
+| `/COTAR 5000 BRL USDT` | mesmo par, tamanho de referência R$ 5.000 |
+| `/COTAR 1 BTC BRL` | cotação do par BTC/BRL |
+| `/COTAR 1 BTC USDT` | conversão cripto → cripto (direção única) |
+| `/COMPRA 50K USDT` | confirma a **compra** na cotação ativa (consome a cotação) |
+| `/VENDA 50K USDT` | confirma a **venda** na cotação ativa (consome a cotação) |
+
+Aliases de comando: `/COMPRAR`, `/ORDER`, `/ORDEM`, `/FECHAR` → compra · `/VENDER`, `/SELL` → venda.
 
 Aliases: `USD`, `DÓLAR`, `DOLARES` → **USDC** · `REAL/REAIS` → BRL · `TETHER` → USDT · `BITCOIN` → BTC · `ETHEREUM` → ETH. Valores aceitam `25K`, `1,5M`, `5.000,50`.
 
@@ -116,22 +117,37 @@ As mensagens da fila são entregues via `OUTBOUND_MODE`:
 
 ## Respostas no grupo
 
-Toda cotação sai **em real e em dólar** (USD = USDC, cotação do dólar buscada no mesmo instante):
+Toda cotação sai no formato de mesa, com os **dois lados do par** e a fee do merchant já aplicada em cada um:
 
 ```txt
-📊 Cotação BRL → USDT (3/10)
-1.000 USDT = R$ 5.147,46
-1 USDT = R$ 5,14746
+💱 Cotação · USDT D0 • 🇧🇷 USDT/BRL · 3/10
 
-📊 Cotação USD → USDT (3/10)
-1.000 USDT = US$ 1.000,52
-1 USDT = US$ 1,00052
+🟢 Compra: 1 USDT = R$ 5,0051
+50k USDT = R$ 250.255,00
+🔴 Venda: 1 USDT = R$ 4,9891
+50k USDT = R$ 249.455,00
+🧾 Digite
+→ /compra 50k USDT
+→ /venda 50k USDT
+
+⚡ Valores sujeitos à confirmação no fechamento.
 ```
 
-* Compra com execução inativa (padrão): `✅ Pedido recebido! … A operação será concluída manualmente por um operador da Mutual.`
-* Compra ativa no painel (fase de ordens desabilitada): `ℹ️ A execução automática de ordens ainda não está habilitada. … concluída manualmente por um operador da Mutual.`
-* Grupo sem merchant: `⚠️ Este grupo ainda não está vinculado a um cliente habilitado para cotações.`
-* Fee ausente: `⚠️ Não há taxa configurada para esta operação neste cliente.`
+**Blindagem da resposta** (nunca um número errado):
+
+| Situação | Resposta |
+| --- | --- |
+| Lado sem fee cadastrada no merchant | `🔴 Venda: sob consulta` + aviso de condução manual; o comando daquele lado **não** é oferecido |
+| Preço inválido após a fee (ex.: taxa >= 100%) | mesmo tratamento: lado sai como *sob consulta* |
+| Ticker com bid > ask (dado estranho) | lados normalizados — a venda **nunca** sai acima da compra |
+| Nenhum dos dois lados configurado | `⚠️ Não há taxa configurada para esta operação neste cliente.` (sem cotação) |
+| `/compra` ou `/venda` de um lado *sob consulta* | avisa que aquele lado será conduzido manualmente — nunca confirma |
+| `/compra`/`/venda` sem cotação válida (ou já consumida) | pede uma cotação atualizada |
+| Argumentos que não batem com a cotação ativa | mostra a cotação ativa e orienta a cotar o que foi pedido |
+
+Confirmação (`/compra` · `/venda`) consome a cotação — **uma cotação vale para uma única confirmação** — e emite o registro completo da operação (ID da transação, data, tipo, cotação, montantes Total/Pendente) seguido de: *"A operação será concluída manualmente por um operador da Mutual."*
+
+> O bloco em **dólar** está pronto no código e desligado nesta fase (`QUOTE_SHOW_USD=false`).
 
 ---
 

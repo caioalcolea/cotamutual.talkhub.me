@@ -30,6 +30,8 @@ services:
       - QUOTE_QUEUE_INTERVAL_MS=${QUOTE_QUEUE_INTERVAL_MS:-3000}
       - QUOTE_REFERENCE_BRL_AMOUNT=${QUOTE_REFERENCE_BRL_AMOUNT:-1000}
       - QUOTE_TICKER_FALLBACK=${QUOTE_TICKER_FALLBACK:-true}
+      - QUOTE_SHOW_USD=${QUOTE_SHOW_USD:-false}
+      - QUOTE_SETTLEMENT_LABEL=${QUOTE_SETTLEMENT_LABEL:-D0}
 
     ## 💾 Persistência (toggles do painel + registro de cotações)
       - DATA_DIR=/app/data

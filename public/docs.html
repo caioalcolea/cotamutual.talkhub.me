@@ -139,7 +139,7 @@
     <div class="step"><div class="body"><b>Merchant identificado pelo grupo</b><small>Busca nos <code>linkGroups</code> dos merchants (cache 60s): JID direto, link de convite ou código — convites são resolvidos para JID na Evolution (<code>/group/inviteInfo</code>, cache 6h). Exige <code>merchant.status=active</code> e <code>linkGroup.active=true</code>.</small></div></div>
     <div class="step"><div class="body"><b>Toggles do painel</b><small>Cotações desligadas no canal/grupo → responde que a cotação será conduzida manualmente (nunca cita "bot desligado").</small></div></div>
     <div class="step"><div class="body"><b>Operação classificada + fee exata</b><small>BRL→cripto=<code>buy</code> · BRL→USDC e USDC→BRL e cripto→cripto=<code>conversion</code> · cripto→BRL=<code>sell</code>. Fee localizada por <code>operation+source+destination</code> (cache 60s) — <b>sem fee exata a cotação é interrompida</b> (nunca usa fee de outro par).</small></div></div>
-    <div class="step"><div class="body"><b>FILA: 10 mensagens, requisições separadas</b><small>Cada mensagem sai em REAL e em DÓLAR (USD = USDC, cotação buscada no mesmo instante). Para cada mensagem: ticker NOVO na Mutual (nunca cacheado, preços mudam a cada segundo) → fee aplicada na direção correta → <code>sendText</code> no grupo (📊 Cotação X/10) → registro completo no painel. Intervalo padrão 3s. Nova /COTAR substitui a fila; /COMPRAR interrompe.</small></div></div>
+    <div class="step"><div class="body"><b>FILA: 10 mensagens, requisições separadas</b><small>Cada mensagem traz os DOIS lados do par (compra e venda), cada um com a fee do seu lado — lado sem fee sai como sob consulta. Para cada mensagem: ticker NOVO na Mutual (nunca cacheado, preços mudam a cada segundo) → fee aplicada na direção correta → <code>sendText</code> no grupo (📊 Cotação X/10) → registro completo no painel. Intervalo padrão 3s. Nova /COTAR substitui a fila; /COMPRAR interrompe.</small></div></div>
   </div>
 </div>
 
@@ -156,7 +156,7 @@
 
 <div class="diagram">
   <div class="steps">
-    <div class="step"><div class="body"><b>/COMPRAR chega (com ou sem argumentos)</b><small><code>/COMPRAR</code> · <code>/COMPRAR USDT</code> · <code>/COMPRAR 100K USDT</code>. Aliases: /ORDER, /ORDEM, /FECHAR.</small></div></div>
+    <div class="step"><div class="body"><b>/COMPRA ou /VENDA chega (com ou sem argumentos)</b><small><code>/COMPRA</code> · <code>/VENDA USDT</code> · <code>/COMPRA 50K USDT</code>. Aliases: /ORDER, /ORDEM, /FECHAR.</small></div></div>
     <div class="step"><div class="body"><b>Argumentos conferidos contra a cotação ativa</b><small>Ativo e quantidade precisam bater com a cotação do grupo (fila ativa ou concluída há &lt; 15 min). Divergência (ex: cotação de USDT e pedido de BTC) → NÃO confirma e orienta: "envie /COTAR &lt;valor&gt; &lt;ativo&gt;".</small></div></div>
     <div class="step"><div class="body"><b>Cotação é TRAVADA (consumida)</b><small>Cada cotação confirma no máximo UMA operação. O próximo /COMPRAR exige uma /COTAR nova — preços mudam a cada segundo.</small></div></div>
     <div class="step"><div class="body"><b>Registro da operação emitido no grupo</b><small>ID do grupo · ID da Transação (UUID) · Data (America/Sao_Paulo) · Tipo (COMPRA/VENDA/CONVERSÃO + ativo) · Cotação final · Montantes Total/Pendente no ativo e em BRL.</small></div></div>
