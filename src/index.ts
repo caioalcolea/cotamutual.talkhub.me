@@ -30,6 +30,7 @@ import { MessageProcessor } from "./core/processor.js";
 import { createWebhookRouter } from "./http/webhook.js";
 import { createPanelRouter } from "./http/panel-api.js";
 import { SERVICE_NAME, SERVICE_VERSION } from "./constants.js";
+import { describeError } from "./util/errors.js";
 import { logger } from "./logger.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -73,15 +74,24 @@ async function main(): Promise<void> {
     groupMatcher,
   );
 
-  // Aquecimento do cache de merchants (nao-fatal).
-  merchantCache
-    .getAll()
-    .then((m) => logger.info("Cache de merchants aquecido", { count: m.length }))
-    .catch((error) =>
-      logger.warn("Falha ao aquecer cache de merchants (segue on-demand)", {
-        error: String(error),
-      }),
-    );
+  // Aquecimento periodico em segundo plano: merchants + resolucao de convites
+  // de grupo. Mantem o painel e o webhook rapidos (nenhuma requisicao HTTP
+  // fica presa resolvendo convite na Evolution).
+  const warmCaches = async (): Promise<void> => {
+    try {
+      const merchants = await merchantCache.getAll();
+      await groupMatcher.warmInviteCache(merchants);
+    } catch (error) {
+      logger.warn("Falha no aquecimento de caches (segue on-demand)", {
+        error: describeError(error),
+      });
+    }
+  };
+  void warmCaches().then(() =>
+    logger.info("Caches aquecidos", { merchants: merchantCache.snapshot().merchants.length }),
+  );
+  const warmTimer = setInterval(() => void warmCaches(), Math.max(config.merchantCacheTtlMs, 30_000));
+  warmTimer.unref();
 
   const app = express();
   app.use(express.json({ limit: "1mb" }));

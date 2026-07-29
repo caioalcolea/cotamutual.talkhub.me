@@ -16,6 +16,7 @@ import type { SettingsStore } from "../state/settings.js";
 import type { QuoteLogRepository } from "../state/quote-log.js";
 import type { QuoteQueue } from "../queue/quote-queue.js";
 import { auditMerchantFees } from "../core/fees.js";
+import { mapWithConcurrency } from "../util/concurrency.js";
 import type { GroupMatcher } from "../core/group-matcher.js";
 import type { MutualClients } from "../mutual/client.js";
 import { fetchUnitPriceBRL } from "../mutual/quote.js";
@@ -68,7 +69,13 @@ export function createPanelRouter(deps: {
   router.use(guard);
 
   router.get("/overview", async (_req: Request, res: Response) => {
-    const merchants = await merchantCache.getAll().catch(() => []);
+    // O painel nunca deve ficar mudo: se a consulta falhar, os grupos vem do
+    // cache/estado local e o motivo do erro vai junto na resposta.
+    let merchantsError: string | null = null;
+    const merchants = await merchantCache.getAll().catch((error) => {
+      merchantsError = describeError(error);
+      return [];
+    });
     const channelOverrides = settings.listChannels();
     const groupEntries = settings.listGroups();
 
@@ -93,9 +100,9 @@ export function createPanelRouter(deps: {
       for (const link of merchant.linkGroups ?? []) {
         const channel = String(link.channel || "").toLowerCase();
         const raw = String(link.groupId).trim();
-        const canonical = await groupMatcher
-          .canonicalGroupId(channel, raw)
-          .catch(() => raw);
+        // Somente cache: o painel nao pode ficar preso resolvendo convites
+        // na Evolution a cada atualizacao (a resolucao roda em background).
+        const canonical = groupMatcher.canonicalGroupIdCached(channel, raw);
         const key = `${channel}|${canonical}`;
         groups.set(key, {
           channel,
@@ -166,6 +173,10 @@ export function createPanelRouter(deps: {
         }),
       queue: queue.snapshot(),
       merchantsCachedAt: merchantCache.snapshot().fetchedAt,
+      merchantsCount: merchants.length,
+      // Motivo real quando a consulta de merchants falha (em vez de lista vazia).
+      merchantsError: merchantsError ?? merchantCache.snapshot().lastError?.detail ?? null,
+      feesError: feeCache.lastError()?.detail ?? null,
     });
   });
 
@@ -190,24 +201,79 @@ export function createPanelRouter(deps: {
   router.get("/merchants", async (_req: Request, res: Response) => {
     try {
       const merchants = await merchantCache.getAll();
-      const detailed = await Promise.all(
-        merchants.map(async (merchant) => {
-          const fees = await feeCache.getByMerchantId(merchant.id).catch(() => []);
+      // Concorrencia limitada: dezenas de chamadas simultaneas de fees
+      // disparam limite de requisicoes na Mutual e derrubam as cotacoes.
+      const detailed = await mapWithConcurrency(merchants, 4, async (merchant) => {
+        let fees: Awaited<ReturnType<typeof feeCache.getByMerchantId>> = [];
+        let feesError: string | null = null;
+        try {
+          fees = await feeCache.getByMerchantId(merchant.id);
+        } catch (error) {
+          feesError = describeError(error);
+        }
+        return {
+          id: merchant.id,
+          legalName: merchant.legalName ?? null,
+          legalDocument: merchant.legalDocument ?? null,
+          status: merchant.status ?? null,
+          linkGroups: merchant.linkGroups ?? [],
+          feeCount: fees.length,
+          feesError,
+          feeAudit: auditMerchantFees(fees),
+        };
+      });
+      res.json({ merchants: detailed, count: detailed.length });
+    } catch (error) {
+      const detail = describeError(error);
+      logger.error("Falha ao montar visao de merchants", { error: detail });
+      res.status(502).json({ error: `Falha ao consultar merchants na Mutual: ${detail}` });
+    }
+  });
+
+  /**
+   * Diagnostico: consulta merchants direto na Mutual (sem cache), mostrando
+   * status HTTP e corpo do erro — o mesmo padrao do diagnostico de cotacao.
+   */
+  router.get("/diag/merchants", async (_req: Request, res: Response) => {
+    const startedAt = Date.now();
+    try {
+      const response = await clients.prod.get("/api/v2/resource/merchants", {
+        params: { page: 1, limit: 100 },
+      });
+      const body = response.data as { data?: unknown[]; pagination?: unknown };
+      const list = Array.isArray(body?.data) ? body.data : [];
+      res.json({
+        ok: true,
+        httpStatus: response.status,
+        count: list.length,
+        pagination: body?.pagination ?? null,
+        elapsedMs: Date.now() - startedAt,
+        sample: list.slice(0, 3).map((m) => {
+          const merchant = m as Record<string, unknown>;
           return {
             id: merchant.id,
-            legalName: merchant.legalName ?? null,
-            legalDocument: merchant.legalDocument ?? null,
-            status: merchant.status ?? null,
-            linkGroups: merchant.linkGroups ?? [],
-            feeCount: fees.length,
-            feeAudit: auditMerchantFees(fees),
+            legalName: merchant.legalName,
+            status: merchant.status,
+            linkGroups: Array.isArray(merchant.linkGroups) ? merchant.linkGroups.length : 0,
           };
         }),
-      );
-      res.json({ merchants: detailed });
+        cache: {
+          cachedAt: merchantCache.snapshot().fetchedAt,
+          cachedCount: merchantCache.snapshot().merchants.length,
+          lastError: merchantCache.snapshot().lastError,
+        },
+      });
     } catch (error) {
-      logger.error("Falha ao montar visao de merchants", { error: String(error) });
-      res.status(502).json({ error: "Falha ao consultar merchants na Mutual." });
+      res.json({
+        ok: false,
+        elapsedMs: Date.now() - startedAt,
+        error: describeError(error),
+        cache: {
+          cachedAt: merchantCache.snapshot().fetchedAt,
+          cachedCount: merchantCache.snapshot().merchants.length,
+          lastError: merchantCache.snapshot().lastError,
+        },
+      });
     }
   });
 

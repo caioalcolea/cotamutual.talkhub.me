@@ -117,6 +117,7 @@
         <option value="sell">venda (bid)</option>
       </select>
       <button onclick="runDiag()">Testar cotação-base</button>
+      <button onclick="runDiagMerchants()" style="background:#f0bb3b;color:#1a2447">Testar merchants</button>
       <span class="hint">consulta ao vivo GET /crypto/quote na Mutual — mostra o preço ou o erro exato</span>
     </div>
     <pre id="diagOut" class="mono"></pre>
@@ -132,6 +133,7 @@
   <div id="queue"></div>
 
   <h2>Merchants & Fees</h2>
+  <div id="merchantsError"></div>
   <div id="merchants"></div>
 
   <h2>Registro de operações (detalhes internos)</h2>
@@ -184,7 +186,8 @@ function renderOverview(data) {
     <div class="card"><div class="k">Execução de ordens</div><div class="v">${c.ordersEnabled ? '<span class="tag warn">habilitada (fase futura)</span>' : '<span class="tag off">desabilitada</span>'}</div></div>
     <div class="card"><div class="k">Fila por cotação</div><div class="v">${c.quoteQueueMessages} msgs · ${(c.quoteQueueIntervalMs / 1000).toFixed(1)}s</div></div>
     <div class="card"><div class="k">Ambiente de cotação</div><div class="v">${esc(c.cryptoEnv).toUpperCase()}</div></div>
-    <div class="card"><div class="k">Envio ao grupo</div><div class="v">${esc(c.outboundMode)}</div></div>`;
+    <div class="card"><div class="k">Envio ao grupo</div><div class="v">${esc(c.outboundMode)}</div></div>
+    <div class="card"><div class="k">Merchants carregados</div><div class="v">${data.merchantsCount ?? 0}${data.merchantsError ? ' <span class="tag danger">erro</span>' : ""}</div></div>`;
 
   $("channels").innerHTML = `<table><tr><th>Canal</th><th>Cotações</th><th>Compra (execução) <span class="hint">padrão: desligado — ativação manual</span></th></tr>` +
     data.channels.map((ch) => `<tr>
@@ -276,6 +279,40 @@ async function runDiag() {
   }
 }
 
+async function runDiagMerchants() {
+  $("diagOut").textContent = "consultando merchants na Mutual...";
+  try {
+    const r = await api("/diag/merchants");
+    $("diagOut").textContent = JSON.stringify(r, null, 2);
+  } catch (e) {
+    $("diagOut").textContent = "erro: " + e.message;
+  }
+}
+
+// Merchants sao pesados (fees de cada cliente): intervalo proprio e sem
+// sobreposicao de requisicoes.
+let merchantsInFlight = false;
+let merchantsLastFetch = 0;
+const MERCHANTS_INTERVAL_MS = 30000;
+
+async function refreshMerchants(force) {
+  if (merchantsInFlight) return;
+  if (!force && Date.now() - merchantsLastFetch < MERCHANTS_INTERVAL_MS) return;
+  merchantsInFlight = true;
+  try {
+    const data = await api("/merchants");
+    merchantsLastFetch = Date.now();
+    $("merchantsError").innerHTML = "";
+    renderMerchants(data);
+  } catch (e) {
+    merchantsLastFetch = Date.now();
+    $("merchantsError").innerHTML =
+      `<div class="empty" style="border-color:#f2b8bd;color:#d64550">Falha ao consultar merchants: ${esc(e.message)}<br><span class="hint">Use "Testar merchants" no Diagnóstico para ver a resposta exata da Mutual.</span></div>`;
+  } finally {
+    merchantsInFlight = false;
+  }
+}
+
 async function refresh() {
   try {
     $("err").textContent = "";
@@ -283,7 +320,11 @@ async function refresh() {
     renderOverview(overview);
     renderLogs(logs);
     $("lastUpdate").textContent = "Atualizado às " + new Date().toLocaleTimeString("pt-BR");
-    api("/merchants").then(renderMerchants).catch(() => {});
+    if (overview.merchantsError) {
+      $("merchantsError").innerHTML =
+        `<div class="empty" style="border-color:#f2b8bd;color:#d64550">Falha ao consultar merchants: ${esc(overview.merchantsError)}<br><span class="hint">Grupos e cotações podem estar usando o último cache válido.</span></div>`;
+    }
+    refreshMerchants(false);
   } catch (e) {
     $("err").textContent = "Erro ao carregar painel: " + e.message;
   }

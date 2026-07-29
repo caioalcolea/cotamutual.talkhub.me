@@ -61,4 +61,40 @@ export class GroupMatcher {
     const jid = await this.resolver.jidForInviteCode(code);
     return jid ?? raw;
   }
+
+  /**
+   * Versao SEM rede: usa apenas o que ja esta em cache. O painel atualiza a
+   * cada poucos segundos e nao pode ficar preso resolvendo convites na
+   * Evolution — a resolucao real acontece no fluxo da mensagem (e no
+   * aquecimento em segundo plano).
+   */
+  canonicalGroupIdCached(channel: string, rawGroupId: string): string {
+    const raw = String(rawGroupId || "").trim();
+    if (String(channel || "").toLowerCase() !== "whatsapp") return raw;
+    const code = extractWhatsAppInviteCode(raw);
+    if (!code || !this.resolver.enabled()) return raw;
+    return this.resolver.cachedJid(code) ?? raw;
+  }
+
+  /**
+   * Resolve em segundo plano os convites ainda desconhecidos (limite por
+   * rodada) para que o painel converja sem bloquear nenhuma requisicao.
+   */
+  async warmInviteCache(
+    merchants: readonly MutualMerchant[],
+    maxPerRound = 5,
+  ): Promise<void> {
+    if (!this.resolver.enabled()) return;
+    let resolved = 0;
+    for (const merchant of merchants) {
+      for (const group of merchant.linkGroups || []) {
+        if (resolved >= maxPerRound) return;
+        if (String(group.channel || "").toLowerCase() !== "whatsapp") continue;
+        const code = extractWhatsAppInviteCode(group.groupId);
+        if (!code || this.resolver.cachedJid(code)) continue;
+        await this.resolver.jidForInviteCode(code).catch(() => null);
+        resolved += 1;
+      }
+    }
+  }
 }
