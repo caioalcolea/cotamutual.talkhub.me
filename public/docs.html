@@ -98,8 +98,9 @@
   <a href="#variaveis">5. Variáveis da cotação</a>
   <a href="#formulas">6. Fórmulas e exemplo</a>
   <a href="#requisitos">7. Requisitos técnicos</a>
-  <a href="#regras">8. Regras da fase atual</a>
-  <a href="#runbook">9. Operação (runbook)</a>
+  <a href="#merchants">8. Resolução de merchants</a>
+  <a href="#regras">9. Regras da fase atual</a>
+  <a href="#runbook">10. Operação (runbook)</a>
 </div>
 
 <div class="banner">⚠️ <b>Fase atual:</b> o sistema apenas COTA. <code>ORDERS_ENABLED=false</code> — nenhuma ordem é criada (o código nem possui a chamada <code>POST /crypto/orders</code>). O toggle <b>Compra (execução)</b> nasce sempre desligado e o /COMPRAR encerra a cotação com registro para conclusão <b>manual por um operador da Mutual</b>.</div>
@@ -386,13 +387,51 @@ curl 'https://cotacaomutual.talkhub.me/api/panel/diag/quote?asset=USDT&side=buy&
   <tr><td>Cadastro do grupo</td><td>merchant ativo + linkGroup ativo (JID, link ou código de convite)</td></tr>
   <tr><td>Fees do merchant</td><td>matriz por par cadastrada na Mutual (sem fee = sem cotação)</td></tr>
   <tr><td>Fuso</td><td>TZ=America/Sao_Paulo (datas do registro)</td></tr>
-  <tr><td>Node/dev</td><td>Node ≥ 20 · <code>npm run build</code> · <code>npm test</code> (44 testes)</td></tr>
+  <tr><td>Node/dev</td><td>Node ≥ 20 · <code>npm run build</code> · <code>npm test</code> (62 testes)</td></tr>
 </table>
 </div>
 </div>
 
 <!-- ================================================================ -->
-<h2 id="regras">8. Regras da fase atual</h2>
+<h2 id="merchants">8. Resolução de merchants (resiliência)</h2>
+
+<p class="sub">A listagem <code>GET /resource/merchants</code> pode recusar o service token (<code>Service token not accepted on this endpoint</code>) e a API <b>não expõe merchant por ID</b> — <code>/resource/merchants/{id}</code> responde <code>404</code> em HTML (<code>Cannot GET …</code>). O sistema tem quatro níveis; o primeiro que funcionar vence, e o painel mostra qual está em uso.</p>
+
+<div class="flow">
+  <div class="step"><div class="body"><b>1 · Listagem</b><small><code>GET /api/v2/resource/merchants?page&amp;limit</code> — caminho normal, traz <code>linkGroups</code> completos. Alimenta o snapshot em disco.</small></div></div>
+  <div class="step"><div class="body"><b>2 · Consulta individual por organização (fila)</b><small>Para cada ID conhecido tenta o endpoint direto e, como ele não existe, cai na <b>sonda via fees</b>: <code>GET /resource/fees/merchant/{orgId}</code> — <code>200</code> confirma que o merchant existe e está acessível; <code>404</code> significa fora desta conta. O nome vem do catálogo semente/snapshot. IDs que não respondem ficam <b>10 min em quarentena</b> (sem remartelar a API) e o 404 esperado não vai para o log.</small></div></div>
+  <div class="step"><div class="body"><b>3 · Snapshot em disco</b><small><code>data/merchants-snapshot.json</code> — último estado válido. Os <code>linkGroups</code> do snapshot são preservados quando a resposta individual não os traz: o vínculo de grupo nunca se perde.</small></div></div>
+  <div class="step"><div class="body"><b>4 · Vínculos manuais do painel</b><small>Aplicados <b>por cima de todos os níveis</b>. Se nenhuma fonte da Mutual responder, os grupos vinculados continuam cotando normalmente.</small></div></div>
+</div>
+
+<h3>8.1 Origem dos IDs de organização</h3>
+<table>
+  <tr><th>Fonte</th><th>Onde</th></tr>
+  <tr><td>Catálogo semente</td><td><code>src/mutual/known-merchants.ts</code> — IDs + razão social já observados em produção</td></tr>
+  <tr><td>Ambiente</td><td><code>MUTUAL_KNOWN_MERCHANT_IDS</code> (separados por vírgula)</td></tr>
+  <tr><td>Snapshot</td><td>todo merchant já visto fica registrado automaticamente</td></tr>
+  <tr><td>Vínculos</td><td>todo merchant vinculado no painel entra na lista de IDs conhecidos</td></tr>
+</table>
+
+<h3>8.2 Vincular grupo → merchant pelo painel</h3>
+<p class="sub">Bloco <b>Vincular grupo → merchant</b>: escolha o canal, cole o ID/JID do grupo, selecione o merchant e clique em <b>Vincular</b>. Cada linha de grupo tem um botão <b>vincular</b> que já preenche o formulário. Para remover, deixe o merchant vazio e clique em <b>Desvincular</b>. O vínculo é gravado em <code>DATA_DIR</code> (volume externo) e sobrevive a reinícios e redeploys.</p>
+<pre>curl -X POST 'https://cotacaomutual.talkhub.me/api/panel/bind-group' \
+  -H 'Authorization: Bearer SEU_PANEL_TOKEN' -H 'Content-Type: application/json' \
+  -d '{"channel":"whatsapp","groupId":"120363…@g.us","merchantId":"org_3G8y…","label":"Grupo VIZZO"}'
+
+<span style="color:#8b94a7"># desvincular: merchantId vazio</span>
+curl -X POST 'https://cotacaomutual.talkhub.me/api/panel/bind-group' \
+  -H 'Authorization: Bearer SEU_PANEL_TOKEN' -H 'Content-Type: application/json' \
+  -d '{"channel":"whatsapp","groupId":"120363…@g.us","merchantId":""}'
+
+<span style="color:#8b94a7"># catálogo para o seletor + vínculos ativos</span>
+curl 'https://cotacaomutual.talkhub.me/api/panel/known-merchants' -H 'Authorization: Bearer SEU_PANEL_TOKEN'
+
+<span style="color:#8b94a7"># diagnóstico: testa listagem E consulta individual ao vivo, com status e corpo do erro</span>
+curl 'https://cotacaomutual.talkhub.me/api/panel/diag/merchants' -H 'Authorization: Bearer SEU_PANEL_TOKEN'</pre>
+
+<!-- ================================================================ -->
+<h2 id="regras">9. Regras da fase atual</h2>
 <ol>
   <li><b>Só cotações.</b> <code>ORDERS_ENABLED=false</code>; a chamada de criação de ordem não existe no código.</li>
   <li><b>Compra (execução) sempre nasce desligada</b> — ativação exclusivamente manual no painel, por canal ou grupo.</li>
@@ -405,7 +444,7 @@ curl 'https://cotacaomutual.talkhub.me/api/panel/diag/quote?asset=USDT&side=buy&
 </ol>
 
 <!-- ================================================================ -->
-<h2 id="runbook">9. Operação (runbook)</h2>
+<h2 id="runbook">10. Operação (runbook)</h2>
 <pre><span style="color:#8b94a7"># Primeiro deploy (pergunta só a MUTUAL_API_KEY; gera tokens; registra webhook)</span>
 cd /root/cotacaomutual.talkhub.me && bash setup.sh
 
@@ -423,7 +462,8 @@ https://cotacaomutual.talkhub.me/health</pre>
 
 <table>
   <tr><th>Sintoma</th><th>Causa provável / ação</th></tr>
-  <tr><td>"grupo não vinculado"</td><td>linkGroup ausente/inativo na Mutual, merchant inativo, ou convite não resolvível (registre o JID direto). Ver logs: <code>Falha ao resolver convite</code>.</td></tr>
+  <tr><td>"grupo não vinculado"</td><td>linkGroup ausente/inativo na Mutual, merchant inativo, ou convite não resolvível (registre o JID direto). Ver logs: <code>Falha ao resolver convite</code>. Solução imediata: <b>vincular o grupo ao merchant pelo painel</b> (§8.2).</td></tr>
+  <tr><td>Painel sem merchants / lista vazia</td><td>Painel → <b>Testar merchants</b> (<code>/api/panel/diag/merchants</code>) mostra o erro exato de cada caminho. Com a listagem recusando o token, o rótulo de fonte deve indicar <code>consulta individual</code>; se nenhum caminho responder, use os vínculos manuais (§8.2) — os grupos vinculados continuam cotando.</td></tr>
   <tr><td>"não há taxa configurada"</td><td>Falta a fee EXATA do par no merchant — painel → Merchants & Fees mostra os pendentes.</td></tr>
   <tr><td>"não foi possível gerar a cotação"</td><td>Painel → Diagnóstico (mostra o erro HTTP exato da Mutual) e Registro de operações.</td></tr>
   <tr><td>Preço divergente do mercado</td><td>Conferir <code>priceSource</code> no diagnóstico: deve ser <code>ticker</code>/<code>ticker-fallback</code>, nunca <code>quote</code>.</td></tr>

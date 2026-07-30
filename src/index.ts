@@ -149,6 +149,7 @@ async function main(): Promise<void> {
       queue,
       groupMatcher,
       clients,
+      merchantStore,
     }),
   );
 

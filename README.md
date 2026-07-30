@@ -71,24 +71,51 @@ Venda/conversão da origem:         net           = gross × (1 − taxa)  (rece
 
 ## Resiliência da consulta de merchants
 
-A **listagem** `GET /api/v2/resource/merchants` pode recusar o service token (`Service token not accepted on this endpoint`). O sistema opera em três níveis, nessa ordem:
+A **listagem** `GET /api/v2/resource/merchants` pode recusar o service token (`Service token not accepted on this endpoint`). O sistema opera em **quatro níveis**, nessa ordem — o primeiro que funcionar vence:
 
 | Nível | Fonte | Quando entra |
 | --- | --- | --- |
 | 1 | **Listagem** `GET /resource/merchants` | normal |
-| 2 | **Consulta individual** `GET /resource/merchants/{orgId}`, um a um (fila) | listagem falha — os endpoints por organização seguem funcionais |
+| 2 | **Consulta individual por organização**, um a um (fila) | listagem falha |
 | 3 | **Snapshot em disco** (`data/merchants-snapshot.json`) | listagem e consulta individual falham |
+| 4 | **Vínculos manuais do painel** | nenhuma fonte da Mutual responde |
 
-Os IDs de organização vêm de três fontes combinadas: catálogo semente no código, `MUTUAL_KNOWN_MERCHANT_IDS` no `.env` e o snapshot (todo merchant já visto fica registrado). IDs inexistentes são reconsultados só a cada 10 minutos, e os `linkGroups` do snapshot são preservados quando a resposta individual não os traz — o vínculo de grupo nunca se perde.
+### Nível 2 — sonda pelo endpoint de fees
 
-O painel mostra a fonte em uso (`listagem` · `consulta individual` · `snapshot em disco`) e o botão **Testar merchants** (`GET /api/panel/diag/merchants`) testa os dois caminhos, indicando qual está funcionando. Se a Mutual mudar o caminho do endpoint individual, ajuste sem novo build com `MUTUAL_MERCHANT_BY_ID_PATH=/caminho/{id}`.
+Hoje a API **não expõe merchant por ID**: `/resource/merchants/{id}` e `/resource/merchant/{id}` respondem `404` em HTML (`Cannot GET ...`). O único endpoint por organização que continua funcional é o de **fees**, e é ele que serve de sonda:
+
+```
+GET /api/v2/resource/fees/merchant/{orgId}
+  200 → o merchant existe e está acessível com estas credenciais
+  404 → merchant fora desta conta (entra em quarentena)
+```
+
+O nome vem do catálogo semente/snapshot. A consulta ainda tenta o endpoint direto antes da sonda: se a Mutual voltar a expor merchant por ID, o caminho melhor volta a ser usado sozinho, sem alteração de código.
+
+IDs que não respondem entram em **quarentena de 10 minutos** — sem isso, cada ciclo remartelava a API e inundava o log com 404 esperado. Os `404` da sonda **não** são logados; só erros inesperados (401/5xx) aparecem.
+
+Os IDs de organização vêm de três fontes combinadas: catálogo semente no código, `MUTUAL_KNOWN_MERCHANT_IDS` no `.env` e o snapshot (todo merchant já visto fica registrado). Os `linkGroups` do snapshot são preservados quando a resposta individual não os traz — o vínculo de grupo nunca se perde.
+
+### Nível 4 — vínculo manual grupo → merchant (painel)
+
+Quando a listagem está fora, os `linkGroups` cadastrados na Mutual não chegam. O painel permite **vincular o grupo ao merchant manualmente** (bloco *Vincular grupo → merchant*): escolha o canal, cole o ID/JID do grupo, selecione o merchant e clique em **Vincular**. O vínculo:
+
+* é gravado em `data/merchants-snapshot.json` e **sobrevive a reinícios e redeploys** (volume externo);
+* é aplicado **por cima de qualquer nível** — se a listagem voltar, ele continua valendo;
+* mantém os grupos cotando mesmo se a Mutual ficar totalmente indisponível (fonte `vínculos do painel`);
+* serve também para grupos ainda não cadastrados na Mutual.
+
+Botão **vincular** em cada linha de grupo/merchant preenche o formulário. Para remover, deixe o merchant vazio e clique em **Desvincular**.
+
+O painel mostra a fonte em uso (`listagem` · `consulta individual` · `snapshot em disco` · `vínculos do painel`) e o botão **Testar merchants** (`GET /api/panel/diag/merchants`) testa os dois caminhos da API, indicando qual está funcionando. Se a Mutual passar a expor merchant por ID em outro caminho, ajuste sem novo build com `MUTUAL_MERCHANT_BY_ID_PATH=/caminho/{id}`.
 
 ---
 
 ## Painel de controle (`/painel`)
 
 * **Canais**: liga/desliga *Cotações* e *Compra (execução)* por canal.
-* **Grupos**: mesmos toggles por grupo (override do canal), com merchant vinculado e status do vínculo. Grupos aparecem pelo `linkGroups` dos merchants e também na primeira mensagem recebida via webhook.
+* **Grupos**: mesmos toggles por grupo (override do canal), com merchant vinculado e status do vínculo. Grupos aparecem pelo `linkGroups` dos merchants, pelos vínculos manuais e também na primeira mensagem recebida via webhook.
+* **Vincular grupo → merchant**: vínculo manual persistente, usado quando a listagem da Mutual está indisponível ou o grupo ainda não foi cadastrado lá.
 * **Fila de cotações**: progresso ao vivo (msg X/10) + filas recentes.
 * **Merchants & Fees**: auditoria da matriz mínima de fees por merchant (pares ausentes em destaque).
 * **Registro de operações**: todos os detalhes internos de cada cotação (fees, preço-base, preço final, ticker cru, mensagem enviada).
@@ -106,6 +133,9 @@ Proteja com `PANEL_TOKEN` (o painel pede o token e envia como Bearer).
 | `/api/panel/overview` | GET    | `PANEL_TOKEN`   | Canais, grupos, toggles, filas             |
 | `/api/panel/toggle`   | POST   | `PANEL_TOKEN`   | Liga/desliga bots por canal/grupo          |
 | `/api/panel/merchants`| GET    | `PANEL_TOKEN`   | Merchants + auditoria de fees              |
+| `/api/panel/bind-group` | POST | `PANEL_TOKEN`   | Vincula/desvincula grupo → merchant        |
+| `/api/panel/known-merchants` | GET | `PANEL_TOKEN` | Catálogo para o seletor + vínculos ativos |
+| `/api/panel/diag/merchants` | GET | `PANEL_TOKEN` | Testa listagem e consulta individual ao vivo |
 | `/api/panel/logs`     | GET    | `PANEL_TOKEN`   | Registro detalhado                         |
 | `/health`             | GET    | aberto          | Healthcheck                                |
 
@@ -120,6 +150,20 @@ curl -X POST 'https://cotacaomutual.talkhub.me/webhook?token=SEU_WEBHOOK_TOKEN' 
 ```
 
 Regras para payloads Evolution: só `messages.upsert` é processado; mensagens do próprio bot (`fromMe=true`) são ignoradas (anti-loop); só grupos (`...@g.us`) são atendidos. Texto é lido de `message.conversation` ou `message.extendedTextMessage.text`.
+
+### Vincular grupo → merchant (equivalente ao painel)
+
+```bash
+# vincular
+curl -X POST 'https://cotacaomutual.talkhub.me/api/panel/bind-group' \
+  -H 'Authorization: Bearer SEU_PANEL_TOKEN' -H 'Content-Type: application/json' \
+  -d '{"channel":"whatsapp","groupId":"120363...@g.us","merchantId":"org_3G8y...","label":"Grupo VIZZO"}'
+
+# desvincular (merchantId vazio)
+curl -X POST 'https://cotacaomutual.talkhub.me/api/panel/bind-group' \
+  -H 'Authorization: Bearer SEU_PANEL_TOKEN' -H 'Content-Type: application/json' \
+  -d '{"channel":"whatsapp","groupId":"120363...@g.us","merchantId":""}'
+```
 
 ### Envio ao grupo (saída)
 
@@ -190,7 +234,7 @@ Veja [`.env.example`](./.env.example). Principais:
 ```bash
 npm install
 npm run build     # compila TypeScript
-npm test          # regras de negócio (parser, operações, fees, toggles)
+npm test          # regras de negócio (parser, operações, fees, toggles, fallback de merchants)
 npm run dev       # tsx watch
 ```
 

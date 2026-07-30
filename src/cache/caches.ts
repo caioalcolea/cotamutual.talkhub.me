@@ -18,7 +18,11 @@
 
 import type { MutualClients } from "../mutual/client.js";
 import { fetchAllMerchants, fetchMerchantFees, fetchMerchantsByIds } from "../mutual/merchants.js";
-import { DEFAULT_KNOWN_MERCHANT_IDS, mergeMerchantIds } from "../mutual/known-merchants.js";
+import {
+  DEFAULT_KNOWN_MERCHANT_IDS,
+  knownMerchantName,
+  mergeMerchantIds,
+} from "../mutual/known-merchants.js";
 import type { MerchantStore } from "../state/merchant-store.js";
 import type { MutualFee, MutualMerchant } from "../types.js";
 import { describeError } from "../util/errors.js";
@@ -35,7 +39,7 @@ export interface CacheFailure {
 }
 
 /** De onde veio a lista de merchants em uso. */
-export type MerchantSource = "listing" | "individual" | "snapshot";
+export type MerchantSource = "listing" | "individual" | "snapshot" | "bindings";
 
 export interface MerchantCacheOptions {
   store?: MerchantStore | null;
@@ -76,6 +80,11 @@ export class MerchantCache {
     this.merchantByIdPath = options.merchantByIdPath ?? null;
   }
 
+  /** Força a próxima consulta a recarregar (após vincular grupos no painel). */
+  invalidate(): void {
+    this.entry = null;
+  }
+
   /** Todos os IDs conhecidos: semente + .env + snapshot. */
   knownIds(): string[] {
     return mergeMerchantIds(this.extraIds, this.store?.knownIds() ?? [], DEFAULT_KNOWN_MERCHANT_IDS);
@@ -100,6 +109,43 @@ export class MerchantCache {
     return this.pending;
   }
 
+  /**
+   * Aplica os vinculos manuais (painel) sobre a lista obtida: garante que o
+   * grupo vinculado apareca no merchant correspondente, mesmo quando a Mutual
+   * nao devolve linkGroups (fallback) ou o grupo ainda nao foi cadastrado la.
+   */
+  private applyBindings(merchants: MutualMerchant[]): MutualMerchant[] {
+    const bindings = this.store?.bindings() ?? [];
+    if (bindings.length === 0) return merchants;
+
+    const byId = new Map(merchants.map((m) => [m.id, { ...m } as MutualMerchant]));
+    for (const binding of bindings) {
+      const merchant = byId.get(binding.merchantId) ?? {
+        id: binding.merchantId,
+        status: "active",
+        legalName: knownMerchantName(binding.merchantId) ?? undefined,
+        linkGroups: [],
+      };
+      const groups = [...(merchant.linkGroups ?? [])];
+      const already = groups.some(
+        (g) =>
+          String(g.channel || "").toLowerCase() === binding.channel &&
+          String(g.groupId || "").trim() === binding.groupId,
+      );
+      if (!already) {
+        groups.push({
+          id: `manual-${binding.channel}-${binding.groupId}`,
+          channel: binding.channel,
+          groupId: binding.groupId,
+          name: binding.label,
+          active: true,
+        });
+      }
+      byId.set(binding.merchantId, { ...merchant, linkGroups: groups });
+    }
+    return [...byId.values()];
+  }
+
   private async load(): Promise<MutualMerchant[]> {
     // ---------------- 1) Listagem ----------------
     try {
@@ -108,7 +154,7 @@ export class MerchantCache {
       this.source = "listing";
       this.lastFallbackFailedIds = [];
       this.store?.save(merchants);
-      return merchants;
+      return this.applyBindings(merchants);
     } catch (error) {
       const detail = describeError(error);
       this.failure = { detail, at: Date.now() };
@@ -125,7 +171,9 @@ export class MerchantCache {
         const failedAt = this.deadIds.get(id);
         return !failedAt || now - failedAt > DEAD_ID_RETRY_MS;
       });
-      const candidates = ids.length > 0 ? ids : all;
+      // Se TODOS estao em quarentena, nao reconsulta agora (evita martelar a
+      // API a cada ciclo quando nenhum ID responde).
+      const candidates = ids;
       if (candidates.length > 0) {
         try {
           const result = await fetchMerchantsByIds(
@@ -147,7 +195,7 @@ export class MerchantCache {
               count: merged.length,
               failed: result.failed.length,
             });
-            return merged;
+            return this.applyBindings(merged);
           }
           logger.warn("Consulta individual não retornou merchants", { tried: candidates.length });
           this.lastFallbackFailedIds = result.failed;
@@ -167,7 +215,7 @@ export class MerchantCache {
         count: snapshot.length,
         savedAt: this.store?.savedAt(),
       });
-      return snapshot;
+      return this.applyBindings(snapshot);
     }
 
     // ---------------- Nada disponivel: cache anterior ou erro ----------------
@@ -176,6 +224,15 @@ export class MerchantCache {
         count: this.entry.value.length,
       });
       return this.entry.value;
+    }
+
+    // Ultimo recurso: apenas os vinculos manuais do painel — suficiente para
+    // cotar os grupos vinculados enquanto a Mutual nao responde.
+    const manual = this.applyBindings([]);
+    if (manual.length > 0) {
+      this.source = "bindings";
+      logger.warn("Operando apenas com vínculos manuais do painel", { count: manual.length });
+      return manual;
     }
 
     logger.error("Falha ao consultar merchants na Mutual", {

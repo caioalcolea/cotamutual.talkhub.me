@@ -15,15 +15,26 @@ import { join } from "node:path";
 import type { MutualMerchant } from "../types.js";
 import { logger } from "../logger.js";
 
+/** Vinculo manual grupo -> merchant, definido no painel. */
+export interface GroupBinding {
+  channel: string;
+  groupId: string;
+  merchantId: string;
+  label?: string;
+  boundAt: string;
+}
+
 interface SnapshotFile {
   savedAt: string;
   merchants: MutualMerchant[];
   knownIds: string[];
+  /** Chave: "canal|groupId". */
+  bindings: Record<string, GroupBinding>;
 }
 
 export class MerchantStore {
   private readonly filePath: string;
-  private data: SnapshotFile = { savedAt: "", merchants: [], knownIds: [] };
+  private data: SnapshotFile = { savedAt: "", merchants: [], knownIds: [], bindings: {} };
 
   constructor(dataDir: string) {
     mkdirSync(dataDir, { recursive: true });
@@ -38,13 +49,14 @@ export class MerchantStore {
         savedAt: parsed.savedAt ?? "",
         merchants: parsed.merchants ?? [],
         knownIds: parsed.knownIds ?? [],
+        bindings: parsed.bindings ?? {},
       };
       logger.info("Snapshot de merchants carregado", {
         count: this.data.merchants.length,
         savedAt: this.data.savedAt || null,
       });
     } catch {
-      this.data = { savedAt: "", merchants: [], knownIds: [] };
+      this.data = { savedAt: "", merchants: [], knownIds: [], bindings: {} };
     }
   }
 
@@ -78,6 +90,7 @@ export class MerchantStore {
       if (merchant.id) ids.add(merchant.id);
     }
     this.data = {
+      ...this.data,
       savedAt: new Date().toISOString(),
       merchants,
       knownIds: [...ids],
@@ -99,6 +112,47 @@ export class MerchantStore {
     if (changed) {
       this.data.knownIds = [...set];
       this.persist();
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Vinculos manuais grupo -> merchant (painel)
+  //
+  // Enquanto a listagem de merchants estiver indisponivel, os linkGroups da
+  // Mutual nao chegam. O operador vincula o grupo ao merchant pelo painel e o
+  // sistema passa a cotar normalmente. O vinculo tambem serve para grupos
+  // ainda nao cadastrados na Mutual.
+  // -------------------------------------------------------------------------
+
+  private static bindingKey(channel: string, groupId: string): string {
+    return `${String(channel).toLowerCase()}|${String(groupId).trim()}`;
+  }
+
+  bindings(): GroupBinding[] {
+    return Object.values(this.data.bindings ?? {});
+  }
+
+  bindGroup(channel: string, groupId: string, merchantId: string, label?: string): GroupBinding {
+    const binding: GroupBinding = {
+      channel: String(channel).toLowerCase(),
+      groupId: String(groupId).trim(),
+      merchantId: String(merchantId).trim(),
+      label,
+      boundAt: new Date().toISOString(),
+    };
+    this.data.bindings = { ...this.data.bindings, [MerchantStore.bindingKey(channel, groupId)]: binding };
+    this.rememberIds([binding.merchantId]);
+    this.persist();
+    logger.info("Grupo vinculado manualmente a um merchant", binding as unknown as Record<string, unknown>);
+    return binding;
+  }
+
+  unbindGroup(channel: string, groupId: string): void {
+    const key = MerchantStore.bindingKey(channel, groupId);
+    if (this.data.bindings?.[key]) {
+      delete this.data.bindings[key];
+      this.persist();
+      logger.info("Vínculo manual removido", { channel, groupId });
     }
   }
 }

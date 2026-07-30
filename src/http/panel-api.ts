@@ -21,10 +21,22 @@ import type { GroupMatcher } from "../core/group-matcher.js";
 import type { MutualClients } from "../mutual/client.js";
 import { fetchUnitPriceBRL } from "../mutual/quote.js";
 import { fetchMerchantById } from "../mutual/merchants.js";
+import { DEFAULT_KNOWN_MERCHANTS, knownMerchantName } from "../mutual/known-merchants.js";
+import type { MerchantStore } from "../state/merchant-store.js";
 import { CRYPTO_ASSETS, normalizeAsset } from "../core/assets.js";
 import { FEATURE_DEFAULTS } from "../state/settings.js";
 import { describeError } from "../util/errors.js";
 import { logger } from "../logger.js";
+
+const BindInput = z
+  .object({
+    channel: z.string().min(1),
+    groupId: z.string().min(1),
+    /** Vazio remove o vínculo. */
+    merchantId: z.string().optional().default(""),
+    label: z.string().optional(),
+  })
+  .strict();
 
 const ToggleInput = z
   .object({
@@ -48,9 +60,19 @@ export function createPanelRouter(deps: {
   queue: QuoteQueue;
   groupMatcher: GroupMatcher;
   clients: MutualClients;
+  merchantStore?: MerchantStore | null;
 }): Router {
-  const { config, settings, merchantCache, feeCache, quoteLog, queue, groupMatcher, clients } =
-    deps;
+  const {
+    config,
+    settings,
+    merchantCache,
+    feeCache,
+    quoteLog,
+    queue,
+    groupMatcher,
+    clients,
+    merchantStore,
+  } = deps;
   const router = Router();
 
   const guard = (req: Request, res: Response, next: NextFunction): void => {
@@ -199,6 +221,44 @@ export function createPanelRouter(deps: {
 
     logger.info("Toggle alterado pelo painel", input as unknown as Record<string, unknown>);
     res.json({ ok: true });
+  });
+
+  /** Vincula manualmente um grupo a um merchant (painel). */
+  router.post("/bind-group", (req: Request, res: Response) => {
+    const parsed = BindInput.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Entrada inválida." });
+      return;
+    }
+    const { channel, groupId, merchantId, label } = parsed.data;
+    if (!merchantStore) {
+      res.status(503).json({ error: "Armazenamento de vínculos indisponível." });
+      return;
+    }
+    if (merchantId) {
+      const binding = merchantStore.bindGroup(channel, groupId, merchantId, label);
+      merchantCache.invalidate();
+      res.json({ ok: true, binding });
+    } else {
+      merchantStore.unbindGroup(channel, groupId);
+      merchantCache.invalidate();
+      res.json({ ok: true, unbound: true });
+    }
+  });
+
+  /** Catálogo de merchants conhecidos (para o seletor do painel). */
+  router.get("/known-merchants", (_req: Request, res: Response) => {
+    const known = merchantCache.snapshot().merchants.map((m) => ({
+      id: m.id,
+      legalName: m.legalName ?? knownMerchantName(m.id) ?? null,
+    }));
+    const seeds = DEFAULT_KNOWN_MERCHANTS.filter((s) => !known.some((k) => k.id === s.id));
+    res.json({
+      merchants: [...known, ...seeds].sort((a, b) =>
+        String(a.legalName ?? a.id).localeCompare(String(b.legalName ?? b.id)),
+      ),
+      bindings: merchantStore?.bindings() ?? [],
+    });
   });
 
   router.get("/merchants", async (_req: Request, res: Response) => {

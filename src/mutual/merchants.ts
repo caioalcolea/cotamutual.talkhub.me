@@ -17,6 +17,7 @@ import type {
   MutualMerchant,
   MutualMerchantsResponse,
 } from "../types.js";
+import { knownMerchantName } from "./known-merchants.js";
 import { describeError } from "../util/errors.js";
 import { logger } from "../logger.js";
 
@@ -49,7 +50,7 @@ export async function fetchAllMerchants(clients: MutualClients): Promise<MutualM
 /** Caminhos tentados na consulta individual, na ordem. */
 const MERCHANT_BY_ID_PATHS = [
   (id: string) => `/api/v2/resource/merchants/${encodeURIComponent(id)}`,
-  (id: string) => `/api/v2/resource/merchants/organization/${encodeURIComponent(id)}`,
+  (id: string) => `/api/v2/resource/merchant/${encodeURIComponent(id)}`,
 ];
 
 /** Extrai o merchant de respostas no formato {data: {...}}, {data:[...]} ou objeto direto. */
@@ -93,13 +94,37 @@ export async function fetchMerchantById(
       break;
     }
   }
-  if (lastError) {
+  // 404 aqui e esperado: a API pode simplesmente nao expor merchant por ID.
+  // Nesse caso o chamador segue para a sonda via fees, sem poluir o log.
+  if (lastError && !(axios.isAxiosError(lastError) && lastError.response?.status === 404)) {
     logger.warn("Falha ao consultar merchant individual", {
       merchantId: id,
       detail: describeError(lastError),
     });
   }
   return null;
+}
+
+/**
+ * Sonda por organizacao usando o endpoint de FEES — o unico por-merchant que
+ * responde hoje. Se retorna 200, o merchant existe e esta acessivel; montamos
+ * um registro minimo (nome vem do catalogo/snapshot, quando conhecido).
+ */
+export async function probeMerchantViaFees(
+  clients: MutualClients,
+  id: string,
+): Promise<MutualMerchant | null> {
+  try {
+    await clients.prod.get(`/api/v2/resource/fees/merchant/${encodeURIComponent(id)}`);
+    return { id, status: "active", legalName: knownMerchantName(id) ?? undefined };
+  } catch (error) {
+    if (axios.isAxiosError(error) && error.response?.status === 404) return null;
+    logger.warn("Sonda de merchant via fees falhou", {
+      merchantId: id,
+      detail: describeError(error),
+    });
+    return null;
+  }
 }
 
 export interface IndividualFetchResult {
@@ -128,7 +153,10 @@ export async function fetchMerchantsByIds(
       cursor += 1;
       if (index >= ids.length) return;
       const id = ids[index];
-      const merchant = await fetchMerchantById(clients, id, pathTemplate);
+      // 1) endpoint direto (se a API vier a expor um) 2) sonda via fees.
+      const merchant =
+        (await fetchMerchantById(clients, id, pathTemplate)) ??
+        (await probeMerchantViaFees(clients, id));
       if (merchant) merchants.push(merchant);
       else failed.push(id);
     }
