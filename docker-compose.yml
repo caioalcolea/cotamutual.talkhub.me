@@ -33,6 +33,12 @@ services:
       - QUOTE_SHOW_USD=${QUOTE_SHOW_USD:-false}
       - QUOTE_SETTLEMENT_LABEL=${QUOTE_SETTLEMENT_LABEL:-D0}
 
+    ## 🛟 Fallback de merchants (listagem fora -> consulta por organização)
+      - MERCHANT_FALLBACK_ENABLED=${MERCHANT_FALLBACK_ENABLED:-true}
+      - MERCHANT_FALLBACK_CONCURRENCY=${MERCHANT_FALLBACK_CONCURRENCY:-1}
+      - MUTUAL_KNOWN_MERCHANT_IDS=${MUTUAL_KNOWN_MERCHANT_IDS}
+      - MUTUAL_MERCHANT_BY_ID_PATH=${MUTUAL_MERCHANT_BY_ID_PATH}
+
     ## 💾 Persistência (toggles do painel + registro de cotações)
       - DATA_DIR=/app/data
 

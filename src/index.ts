@@ -19,6 +19,7 @@ import express, { type NextFunction, type Request, type Response } from "express
 import { loadConfig } from "./config.js";
 import { createMutualClients } from "./mutual/client.js";
 import { MerchantCache, FeeCache } from "./cache/caches.js";
+import { MerchantStore } from "./state/merchant-store.js";
 import { SettingsStore } from "./state/settings.js";
 import { QuoteLogRepository } from "./state/quote-log.js";
 import { OutboundSender } from "./channels/outbound.js";
@@ -39,7 +40,14 @@ async function main(): Promise<void> {
   const config = loadConfig();
   const clients = createMutualClients(config);
 
-  const merchantCache = new MerchantCache(clients, config.merchantCacheTtlMs);
+  const merchantStore = new MerchantStore(config.dataDir);
+  const merchantCache = new MerchantCache(clients, config.merchantCacheTtlMs, {
+    store: merchantStore,
+    fallbackEnabled: config.merchantFallbackEnabled,
+    fallbackConcurrency: config.merchantFallbackConcurrency,
+    extraIds: config.knownMerchantIds,
+    merchantByIdPath: config.merchantByIdPath,
+  });
   const feeCache = new FeeCache(clients, config.feeCacheTtlMs);
   const settings = new SettingsStore(config.dataDir);
   const quoteLog = new QuoteLogRepository(config.dataDir);
@@ -88,7 +96,10 @@ async function main(): Promise<void> {
     }
   };
   void warmCaches().then(() =>
-    logger.info("Caches aquecidos", { merchants: merchantCache.snapshot().merchants.length }),
+    logger.info("Caches aquecidos", {
+      merchants: merchantCache.snapshot().merchants.length,
+      source: merchantCache.snapshot().source,
+    }),
   );
   const warmTimer = setInterval(() => void warmCaches(), Math.max(config.merchantCacheTtlMs, 30_000));
   warmTimer.unref();

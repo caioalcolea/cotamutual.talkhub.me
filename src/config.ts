@@ -39,6 +39,14 @@ export interface AppConfig {
   quoteSettlementLabel: string;
 
   merchantCacheTtlMs: number;
+  /** Consulta individual (por organizacao) quando a listagem falha. */
+  merchantFallbackEnabled: boolean;
+  /** Consultas individuais simultaneas (1 = uma a uma, como na fila). */
+  merchantFallbackConcurrency: number;
+  /** IDs de organizacao conhecidos, alem da semente e do snapshot. */
+  knownMerchantIds: string[];
+  /** Caminho alternativo do endpoint individual ("{id}" como marcador). */
+  merchantByIdPath: string | null;
   feeCacheTtlMs: number;
 
   dataDir: string;
@@ -133,6 +141,13 @@ export function loadConfig(): AppConfig {
     quoteSettlementLabel: process.env.QUOTE_SETTLEMENT_LABEL?.trim() || "D0",
 
     merchantCacheTtlMs: intEnv("MERCHANT_CACHE_TTL_MS", 60_000, 5_000),
+    merchantFallbackEnabled: boolEnv("MERCHANT_FALLBACK_ENABLED", true),
+    merchantFallbackConcurrency: intEnv("MERCHANT_FALLBACK_CONCURRENCY", 1, 1),
+    knownMerchantIds: (process.env.MUTUAL_KNOWN_MERCHANT_IDS || "")
+      .split(",")
+      .map((id) => id.trim())
+      .filter(Boolean),
+    merchantByIdPath: process.env.MUTUAL_MERCHANT_BY_ID_PATH?.trim() || null,
     feeCacheTtlMs: intEnv("FEE_CACHE_TTL_MS", 60_000, 5_000),
 
     dataDir: process.env.DATA_DIR?.trim() || "./data",

@@ -20,6 +20,7 @@ import { mapWithConcurrency } from "../util/concurrency.js";
 import type { GroupMatcher } from "../core/group-matcher.js";
 import type { MutualClients } from "../mutual/client.js";
 import { fetchUnitPriceBRL } from "../mutual/quote.js";
+import { fetchMerchantById } from "../mutual/merchants.js";
 import { CRYPTO_ASSETS, normalizeAsset } from "../core/assets.js";
 import { FEATURE_DEFAULTS } from "../state/settings.js";
 import { describeError } from "../util/errors.js";
@@ -174,6 +175,8 @@ export function createPanelRouter(deps: {
       queue: queue.snapshot(),
       merchantsCachedAt: merchantCache.snapshot().fetchedAt,
       merchantsCount: merchants.length,
+      merchantsSource: merchantCache.snapshot().source,
+      merchantsSnapshotSavedAt: merchantCache.snapshot().snapshotSavedAt,
       // Motivo real quando a consulta de merchants falha (em vez de lista vazia).
       merchantsError: merchantsError ?? merchantCache.snapshot().lastError?.detail ?? null,
       feesError: feeCache.lastError()?.detail ?? null,
@@ -231,10 +234,49 @@ export function createPanelRouter(deps: {
   });
 
   /**
-   * Diagnostico: consulta merchants direto na Mutual (sem cache), mostrando
-   * status HTTP e corpo do erro — o mesmo padrao do diagnostico de cotacao.
+   * Diagnostico: testa os DOIS caminhos (listagem e consulta individual por
+   * organizacao) direto na Mutual, sem cache, mostrando status e corpo do erro.
    */
-  router.get("/diag/merchants", async (_req: Request, res: Response) => {
+  router.get("/diag/merchants", async (req: Request, res: Response) => {
+    const snap = merchantCache.snapshot();
+    const testId = String(req.query.id ?? "") || snap.merchants[0]?.id || merchantCache.knownIds()[0];
+
+    // Caminho 2: consulta individual (o fallback que mantem o sistema de pe).
+    const individualStart = Date.now();
+    let individual: Record<string, unknown> = { tested: false };
+    if (testId) {
+      try {
+        const merchant = await fetchMerchantById(clients, testId, config.merchantByIdPath);
+        individual = {
+          tested: true,
+          id: testId,
+          ok: Boolean(merchant),
+          elapsedMs: Date.now() - individualStart,
+          legalName: merchant?.legalName ?? null,
+          status: merchant?.status ?? null,
+          linkGroups: merchant?.linkGroups?.length ?? 0,
+        };
+      } catch (error) {
+        individual = {
+          tested: true,
+          id: testId,
+          ok: false,
+          elapsedMs: Date.now() - individualStart,
+          error: describeError(error),
+        };
+      }
+    }
+
+    const cacheInfo = {
+      source: snap.source,
+      cachedAt: snap.fetchedAt,
+      cachedCount: snap.merchants.length,
+      knownIdCount: snap.knownIdCount,
+      snapshotSavedAt: snap.snapshotSavedAt,
+      fallbackFailedIds: snap.fallbackFailedIds.slice(0, 5),
+      lastError: snap.lastError,
+    };
+
     const startedAt = Date.now();
     try {
       const response = await clients.prod.get("/api/v2/resource/merchants", {
@@ -257,22 +299,19 @@ export function createPanelRouter(deps: {
             linkGroups: Array.isArray(merchant.linkGroups) ? merchant.linkGroups.length : 0,
           };
         }),
-        cache: {
-          cachedAt: merchantCache.snapshot().fetchedAt,
-          cachedCount: merchantCache.snapshot().merchants.length,
-          lastError: merchantCache.snapshot().lastError,
-        },
+        individual,
+        cache: cacheInfo,
       });
     } catch (error) {
       res.json({
         ok: false,
-        elapsedMs: Date.now() - startedAt,
-        error: describeError(error),
-        cache: {
-          cachedAt: merchantCache.snapshot().fetchedAt,
-          cachedCount: merchantCache.snapshot().merchants.length,
-          lastError: merchantCache.snapshot().lastError,
-        },
+        listing: { ok: false, error: describeError(error), elapsedMs: Date.now() - startedAt },
+        // Mesmo com a listagem fora, o sistema opera pela consulta individual.
+        individual,
+        cache: cacheInfo,
+        hint: individual.ok
+          ? "Listagem indisponível, mas a consulta individual por organização está funcionando — o sistema opera pelo fallback."
+          : "Listagem e consulta individual falharam; verifique credenciais ou use MUTUAL_MERCHANT_BY_ID_PATH.",
       });
     }
   });

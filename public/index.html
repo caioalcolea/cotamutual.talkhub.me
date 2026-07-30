@@ -180,6 +180,15 @@ async function setToggle(scope, channel, groupId, feature, enabled) {
   }
 }
 
+// Fonte dos merchants: listagem (normal), individual (fallback por
+// organizacao) ou snapshot (ultimo estado valido em disco).
+function sourceTag(source, error) {
+  if (source === "listing") return '<span class="tag ok">listagem</span>';
+  if (source === "individual") return '<span class="tag warn">consulta individual</span>';
+  if (source === "snapshot") return '<span class="tag danger">snapshot em disco</span>';
+  return error ? '<span class="tag danger">erro</span>' : "";
+}
+
 function renderOverview(data) {
   const c = data.config;
   $("statusCards").innerHTML = `
@@ -187,7 +196,7 @@ function renderOverview(data) {
     <div class="card"><div class="k">Fila por cotação</div><div class="v">${c.quoteQueueMessages} msgs · ${(c.quoteQueueIntervalMs / 1000).toFixed(1)}s</div></div>
     <div class="card"><div class="k">Ambiente de cotação</div><div class="v">${esc(c.cryptoEnv).toUpperCase()}</div></div>
     <div class="card"><div class="k">Envio ao grupo</div><div class="v">${esc(c.outboundMode)}</div></div>
-    <div class="card"><div class="k">Merchants carregados</div><div class="v">${data.merchantsCount ?? 0}${data.merchantsError ? ' <span class="tag danger">erro</span>' : ""}</div></div>`;
+    <div class="card"><div class="k">Merchants carregados</div><div class="v">${data.merchantsCount ?? 0} ${sourceTag(data.merchantsSource, data.merchantsError)}</div></div>`;
 
   $("channels").innerHTML = `<table><tr><th>Canal</th><th>Cotações</th><th>Compra (execução) <span class="hint">padrão: desligado — ativação manual</span></th></tr>` +
     data.channels.map((ch) => `<tr>
@@ -321,8 +330,17 @@ async function refresh() {
     renderLogs(logs);
     $("lastUpdate").textContent = "Atualizado às " + new Date().toLocaleTimeString("pt-BR");
     if (overview.merchantsError) {
+      const src = overview.merchantsSource;
+      const operating = src === "individual" || src === "snapshot";
+      const cor = operating ? "#93700f" : "#d64550";
+      const borda = operating ? "#f2ddaa" : "#f2b8bd";
+      const titulo = operating
+        ? (src === "individual"
+            ? "Listagem de merchants indisponível — operando por consulta individual por organização (fila)."
+            : `Listagem e consulta individual indisponíveis — operando pelo snapshot de ${esc(overview.merchantsSnapshotSavedAt || "?")}.`)
+        : "Falha ao consultar merchants";
       $("merchantsError").innerHTML =
-        `<div class="empty" style="border-color:#f2b8bd;color:#d64550">Falha ao consultar merchants: ${esc(overview.merchantsError)}<br><span class="hint">Grupos e cotações podem estar usando o último cache válido.</span></div>`;
+        `<div class="empty" style="border-color:${borda};color:${cor}">${titulo}<br><span class="hint">${esc(overview.merchantsError)}</span></div>`;
     }
     refreshMerchants(false);
   } catch (e) {

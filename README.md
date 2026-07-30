@@ -69,6 +69,22 @@ Venda/conversão da origem:         net           = gross × (1 − taxa)  (rece
 
 ---
 
+## Resiliência da consulta de merchants
+
+A **listagem** `GET /api/v2/resource/merchants` pode recusar o service token (`Service token not accepted on this endpoint`). O sistema opera em três níveis, nessa ordem:
+
+| Nível | Fonte | Quando entra |
+| --- | --- | --- |
+| 1 | **Listagem** `GET /resource/merchants` | normal |
+| 2 | **Consulta individual** `GET /resource/merchants/{orgId}`, um a um (fila) | listagem falha — os endpoints por organização seguem funcionais |
+| 3 | **Snapshot em disco** (`data/merchants-snapshot.json`) | listagem e consulta individual falham |
+
+Os IDs de organização vêm de três fontes combinadas: catálogo semente no código, `MUTUAL_KNOWN_MERCHANT_IDS` no `.env` e o snapshot (todo merchant já visto fica registrado). IDs inexistentes são reconsultados só a cada 10 minutos, e os `linkGroups` do snapshot são preservados quando a resposta individual não os traz — o vínculo de grupo nunca se perde.
+
+O painel mostra a fonte em uso (`listagem` · `consulta individual` · `snapshot em disco`) e o botão **Testar merchants** (`GET /api/panel/diag/merchants`) testa os dois caminhos, indicando qual está funcionando. Se a Mutual mudar o caminho do endpoint individual, ajuste sem novo build com `MUTUAL_MERCHANT_BY_ID_PATH=/caminho/{id}`.
+
+---
+
 ## Painel de controle (`/painel`)
 
 * **Canais**: liga/desliga *Cotações* e *Compra (execução)* por canal.
