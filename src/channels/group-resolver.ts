@@ -68,9 +68,18 @@ export class GroupResolver {
     return entry.jid;
   }
 
-  /** Resolve o codigo de convite para o JID do grupo via Evolution API. */
-  async jidForInviteCode(code: string): Promise<string | null> {
+  /**
+   * Resolve o codigo de convite para o JID do grupo via Evolution API.
+   *
+   * `force` ignora o cache — usado quando o operador pede a resolucao
+   * explicitamente no painel: sem isso, uma falha anterior (bot ainda fora do
+   * grupo) ficaria 60s em cache e a nova tentativa falharia sem sequer
+   * chamar a Evolution, mesmo com o problema ja resolvido.
+   */
+  async jidForInviteCode(code: string, force = false): Promise<string | null> {
     if (!this.enabled()) return null;
+
+    if (force) this.cache.delete(code);
 
     const entry = this.cache.get(code);
     if (entry) {

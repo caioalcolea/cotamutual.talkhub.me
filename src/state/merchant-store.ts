@@ -18,9 +18,16 @@ import { logger } from "../logger.js";
 /** Vinculo manual grupo -> merchant, definido no painel. */
 export interface GroupBinding {
   channel: string;
+  /**
+   * Forma canonica do grupo: JID (...@g.us) quando o convite ja foi resolvido
+   * na Evolution; caso contrario, o proprio link/codigo de convite (o
+   * GroupMatcher resolve na hora da mensagem).
+   */
   groupId: string;
   merchantId: string;
   label?: string;
+  /** Link/codigo de convite digitado pelo operador, quando foi essa a entrada. */
+  invite?: string;
   boundAt: string;
 }
 
@@ -132,27 +139,74 @@ export class MerchantStore {
     return Object.values(this.data.bindings ?? {});
   }
 
-  bindGroup(channel: string, groupId: string, merchantId: string, label?: string): GroupBinding {
+  bindGroup(
+    channel: string,
+    groupId: string,
+    merchantId: string,
+    label?: string,
+    invite?: string | null,
+  ): GroupBinding {
     const binding: GroupBinding = {
       channel: String(channel).toLowerCase(),
       groupId: String(groupId).trim(),
       merchantId: String(merchantId).trim(),
       label,
+      ...(invite ? { invite: String(invite).trim() } : {}),
       boundAt: new Date().toISOString(),
     };
-    this.data.bindings = { ...this.data.bindings, [MerchantStore.bindingKey(channel, groupId)]: binding };
+    // Ao vincular pelo JID ja resolvido, remove um vinculo antigo que tenha
+    // ficado gravado pelo link de convite (evita duplicar o mesmo grupo).
+    if (invite && String(invite).trim() !== binding.groupId) {
+      this.removeBinding(binding.channel, String(invite).trim());
+    }
+    this.data.bindings = {
+      ...this.data.bindings,
+      [MerchantStore.bindingKey(binding.channel, binding.groupId)]: binding,
+    };
     this.rememberIds([binding.merchantId]);
     this.persist();
     logger.info("Grupo vinculado manualmente a um merchant", binding as unknown as Record<string, unknown>);
     return binding;
   }
 
-  unbindGroup(channel: string, groupId: string): void {
+  /** Remove sem persistir; retorna true se havia vinculo. */
+  private removeBinding(channel: string, groupId: string): boolean {
     const key = MerchantStore.bindingKey(channel, groupId);
-    if (this.data.bindings?.[key]) {
-      delete this.data.bindings[key];
+    if (!this.data.bindings?.[key]) return false;
+    delete this.data.bindings[key];
+    return true;
+  }
+
+  /**
+   * Remove o vinculo do grupo. `aliases` cobre as duas formas do mesmo grupo
+   * (JID e link/codigo de convite): o operador desvincula digitando qualquer
+   * uma delas.
+   */
+  unbindGroup(channel: string, groupId: string, ...aliases: (string | null | undefined)[]): boolean {
+    const targets = [groupId, ...aliases]
+      .map((value) => String(value ?? "").trim())
+      .filter(Boolean);
+
+    let removed = false;
+    for (const target of targets) {
+      if (this.removeBinding(channel, target)) removed = true;
+    }
+    // Tambem remove o vinculo cujo convite gravado bata com o que foi digitado.
+    for (const [key, binding] of Object.entries(this.data.bindings ?? {})) {
+      if (
+        binding.channel === String(channel).toLowerCase() &&
+        binding.invite &&
+        targets.includes(binding.invite)
+      ) {
+        delete this.data.bindings[key];
+        removed = true;
+      }
+    }
+
+    if (removed) {
       this.persist();
       logger.info("Vínculo manual removido", { channel, groupId });
     }
+    return removed;
   }
 }

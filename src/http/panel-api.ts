@@ -18,6 +18,7 @@ import type { QuoteQueue } from "../queue/quote-queue.js";
 import { auditMerchantFees } from "../core/fees.js";
 import { mapWithConcurrency } from "../util/concurrency.js";
 import type { GroupMatcher } from "../core/group-matcher.js";
+import { extractWhatsAppInviteCode } from "../channels/group-resolver.js";
 import type { MutualClients } from "../mutual/client.js";
 import { fetchUnitPriceBRL } from "../mutual/quote.js";
 import { fetchMerchantById } from "../mutual/merchants.js";
@@ -116,8 +117,18 @@ export function createPanelRouter(deps: {
         merchantName: string | null;
         linkActive: boolean | null;
         lastSeenAt: string | null;
+        /** Vinculado a mao no painel (nao veio do cadastro da Mutual). */
+        manual: boolean;
+        /** Link de convite usado no vinculo manual, quando houve. */
+        invite: string | null;
       }
     >();
+
+    // Vinculos manuais: chave "canal|grupo" -> convite usado (ou "").
+    const manualBindings = new Map<string, string | null>();
+    for (const binding of merchantStore?.bindings() ?? []) {
+      manualBindings.set(`${binding.channel}|${binding.groupId}`, binding.invite ?? null);
+    }
 
     for (const merchant of merchants) {
       for (const link of merchant.linkGroups ?? []) {
@@ -127,6 +138,8 @@ export function createPanelRouter(deps: {
         // na Evolution a cada atualizacao (a resolucao roda em background).
         const canonical = groupMatcher.canonicalGroupIdCached(channel, raw);
         const key = `${channel}|${canonical}`;
+        const manualKey = `${channel}|${raw}`;
+        const isManual = manualBindings.has(manualKey) || manualBindings.has(key);
         groups.set(key, {
           channel,
           groupId: canonical,
@@ -136,6 +149,8 @@ export function createPanelRouter(deps: {
           merchantName: merchant.legalName ?? null,
           linkActive: link.active === true && merchant.status === "active",
           lastSeenAt: null,
+          manual: isManual,
+          invite: manualBindings.get(manualKey) ?? manualBindings.get(key) ?? null,
         });
       }
     }
@@ -157,6 +172,8 @@ export function createPanelRouter(deps: {
           merchantName: null,
           linkActive: null,
           lastSeenAt: entry.lastSeenAt ?? null,
+          manual: false,
+          invite: null,
         });
       }
     }
@@ -223,27 +240,67 @@ export function createPanelRouter(deps: {
     res.json({ ok: true });
   });
 
-  /** Vincula manualmente um grupo a um merchant (painel). */
-  router.post("/bind-group", (req: Request, res: Response) => {
+  /**
+   * Vincula manualmente um grupo a um merchant (painel).
+   *
+   * O operador informa o LINK DE CONVITE do WhatsApp (o usuario final nao sabe
+   * o JID interno). O convite e resolvido aqui, na hora, pela Evolution:
+   * gravamos o JID como forma canonica e guardamos o link como referencia. Se
+   * a resolucao falhar (instancia fora do grupo, link revogado), o vinculo e
+   * gravado pelo proprio convite e passa a valer assim que a Evolution
+   * responder — o GroupMatcher resolve na chegada da mensagem.
+   */
+  router.post("/bind-group", async (req: Request, res: Response) => {
     const parsed = BindInput.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Entrada inválida." });
       return;
     }
-    const { channel, groupId, merchantId, label } = parsed.data;
+    const { channel, merchantId, label } = parsed.data;
+    const raw = parsed.data.groupId.trim();
     if (!merchantStore) {
       res.status(503).json({ error: "Armazenamento de vínculos indisponível." });
       return;
     }
-    if (merchantId) {
-      const binding = merchantStore.bindGroup(channel, groupId, merchantId, label);
-      merchantCache.invalidate();
-      res.json({ ok: true, binding });
-    } else {
-      merchantStore.unbindGroup(channel, groupId);
-      merchantCache.invalidate();
-      res.json({ ok: true, unbound: true });
+
+    const isWhatsApp = channel.toLowerCase() === "whatsapp";
+    const inviteCode = isWhatsApp ? extractWhatsAppInviteCode(raw) : null;
+
+    if (isWhatsApp && !inviteCode && !raw.endsWith("@g.us")) {
+      res.status(400).json({
+        error:
+          "Informe o link de convite do grupo (https://chat.whatsapp.com/CODIGO) ou o JID interno (…@g.us).",
+      });
+      return;
     }
+
+    // Convite -> JID, sempre com consulta nova (force): o operador pode estar
+    // repetindo a acao justamente por ter acabado de colocar a instancia no
+    // grupo, e o cache guarda a falha anterior por 60s.
+    const canonical = inviteCode ? await groupMatcher.canonicalGroupId(channel, raw, true) : raw;
+    const resolved = inviteCode && canonical !== raw ? canonical : null;
+    const warning =
+      inviteCode && !resolved
+        ? "Não foi possível resolver o convite na Evolution agora (a instância precisa estar no grupo). O vínculo foi salvo pelo link e passa a valer assim que a resolução funcionar."
+        : null;
+
+    if (!merchantId) {
+      // Desvincular aceita qualquer uma das formas (link ou JID).
+      const removed = merchantStore.unbindGroup(channel, canonical, raw, inviteCode);
+      merchantCache.invalidate();
+      res.json({ ok: true, unbound: removed, groupId: canonical });
+      return;
+    }
+
+    const binding = merchantStore.bindGroup(
+      channel,
+      canonical,
+      merchantId,
+      label,
+      inviteCode ? raw : null,
+    );
+    merchantCache.invalidate();
+    res.json({ ok: true, binding, resolvedJid: resolved, warning });
   });
 
   /** Catálogo de merchants conhecidos (para o seletor do painel). */

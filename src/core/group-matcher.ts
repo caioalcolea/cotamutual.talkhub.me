@@ -52,13 +52,17 @@ export class GroupMatcher {
   /**
    * Forma canonica do groupId de um linkGroup (para o painel): convites de
    * WhatsApp viram o JID resolvido; demais valores passam inalterados.
+   *
+   * `force` ignora o cache — use quando o operador aciona a resolucao a mao
+   * (vincular grupo no painel), para que uma falha anterior nao impeca a nova
+   * tentativa.
    */
-  async canonicalGroupId(channel: string, rawGroupId: string): Promise<string> {
+  async canonicalGroupId(channel: string, rawGroupId: string, force = false): Promise<string> {
     const raw = String(rawGroupId || "").trim();
     if (String(channel || "").toLowerCase() !== "whatsapp") return raw;
     const code = extractWhatsAppInviteCode(raw);
     if (!code || !this.resolver.enabled()) return raw;
-    const jid = await this.resolver.jidForInviteCode(code);
+    const jid = await this.resolver.jidForInviteCode(code, force);
     return jid ?? raw;
   }
 

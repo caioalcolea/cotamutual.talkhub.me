@@ -96,16 +96,30 @@ IDs que não respondem entram em **quarentena de 10 minutos** — sem isso, cada
 
 Os IDs de organização vêm de três fontes combinadas: catálogo semente no código, `MUTUAL_KNOWN_MERCHANT_IDS` no `.env` e o snapshot (todo merchant já visto fica registrado). Os `linkGroups` do snapshot são preservados quando a resposta individual não os traz — o vínculo de grupo nunca se perde.
 
-### Nível 4 — vínculo manual grupo → merchant (painel)
+### Nível 4 — vínculo manual grupo → merchant (painel), pelo link de convite
 
-Quando a listagem está fora, os `linkGroups` cadastrados na Mutual não chegam. O painel permite **vincular o grupo ao merchant manualmente** (bloco *Vincular grupo → merchant*): escolha o canal, cole o ID/JID do grupo, selecione o merchant e clique em **Vincular**. O vínculo:
+Quando a listagem está fora, os `linkGroups` cadastrados na Mutual não chegam. O painel permite **vincular o grupo ao merchant manualmente** (bloco *Vincular grupo → merchant*): escolha o canal, **cole o link de convite do grupo**, selecione o merchant e clique em **Vincular**.
+
+O link é o que o usuário final tem à mão — ninguém precisa descobrir o JID interno:
+
+```
+https://chat.whatsapp.com/C34dh5vXFPJ8wgOGlE9LYG   ← cole isto
+        ↓  GET /group/inviteInfo (Evolution), no momento do clique
+120363429012757266@g.us                            ← é o que fica gravado
+```
+
+O JID resolvido vira a **forma canônica** do vínculo e o link fica guardado como referência (aparece na linha do grupo como `convite: …`). O JID interno também é aceito, para quem já o tem.
+
+**Se o convite não resolver na hora** (a instância precisa estar dentro do grupo, ou o link foi revogado), o painel avisa e grava o vínculo **pelo próprio link** — ele passa a valer assim que a resolução funcionar, porque o `GroupMatcher` resolve convites também na chegada da mensagem. Depois de colocar a instância no grupo, basta clicar em **Vincular** de novo: o painel força uma consulta nova, ignorando o cache negativo de 60s da resolução.
+
+O vínculo:
 
 * é gravado em `data/merchants-snapshot.json` e **sobrevive a reinícios e redeploys** (volume externo);
-* é aplicado **por cima de qualquer nível** — se a listagem voltar, ele continua valendo;
+* é aplicado **por cima de qualquer nível** — se a listagem voltar, ele continua valendo (sem duplicar o grupo);
 * mantém os grupos cotando mesmo se a Mutual ficar totalmente indisponível (fonte `vínculos do painel`);
 * serve também para grupos ainda não cadastrados na Mutual.
 
-Botão **vincular** em cada linha de grupo/merchant preenche o formulário. Para remover, deixe o merchant vazio e clique em **Desvincular**.
+Grupos vinculados a mão aparecem com a etiqueta **manual** na tabela. O botão **vincular** em cada linha preenche o formulário. Para remover, deixe o merchant vazio e clique em **Desvincular** — aceita o link **ou** o JID, tanto faz qual foi usado no cadastro.
 
 O painel mostra a fonte em uso (`listagem` · `consulta individual` · `snapshot em disco` · `vínculos do painel`) e o botão **Testar merchants** (`GET /api/panel/diag/merchants`) testa os dois caminhos da API, indicando qual está funcionando. Se a Mutual passar a expor merchant por ID em outro caminho, ajuste sem novo build com `MUTUAL_MERCHANT_BY_ID_PATH=/caminho/{id}`.
 
@@ -153,16 +167,21 @@ Regras para payloads Evolution: só `messages.upsert` é processado; mensagens d
 
 ### Vincular grupo → merchant (equivalente ao painel)
 
-```bash
-# vincular
-curl -X POST 'https://cotacaomutual.talkhub.me/api/panel/bind-group' \
-  -H 'Authorization: Bearer SEU_PANEL_TOKEN' -H 'Content-Type: application/json' \
-  -d '{"channel":"whatsapp","groupId":"120363...@g.us","merchantId":"org_3G8y...","label":"Grupo VIZZO"}'
+`groupId` aceita o **link de convite** (resolvido para JID na hora) ou o JID interno.
 
-# desvincular (merchantId vazio)
+```bash
+# vincular pelo link de convite
 curl -X POST 'https://cotacaomutual.talkhub.me/api/panel/bind-group' \
   -H 'Authorization: Bearer SEU_PANEL_TOKEN' -H 'Content-Type: application/json' \
-  -d '{"channel":"whatsapp","groupId":"120363...@g.us","merchantId":""}'
+  -d '{"channel":"whatsapp","groupId":"https://chat.whatsapp.com/C34dh5vXFPJ8wgOGlE9LYG","merchantId":"org_3G8y...","label":"Grupo VIZZO"}'
+# → {"ok":true,"binding":{"groupId":"120363...@g.us","invite":"https://chat.whatsapp.com/C34dh…"},
+#    "resolvedJid":"120363...@g.us","warning":null}
+# warning != null → convite não resolveu agora; o vínculo ficou salvo pelo link
+
+# desvincular (merchantId vazio) — link ou JID
+curl -X POST 'https://cotacaomutual.talkhub.me/api/panel/bind-group' \
+  -H 'Authorization: Bearer SEU_PANEL_TOKEN' -H 'Content-Type: application/json' \
+  -d '{"channel":"whatsapp","groupId":"https://chat.whatsapp.com/C34dh5vXFPJ8wgOGlE9LYG","merchantId":""}'
 ```
 
 ### Envio ao grupo (saída)

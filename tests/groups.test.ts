@@ -10,9 +10,13 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import { extractWhatsAppInviteCode } from "../src/channels/group-resolver.js";
 import { GroupMatcher } from "../src/core/group-matcher.js";
+import { MerchantStore } from "../src/state/merchant-store.js";
 import type { GroupResolver } from "../src/channels/group-resolver.js";
 import type { MutualMerchant } from "../src/types.js";
 
@@ -128,4 +132,87 @@ test("GroupMatcher: canonicalGroupId resolve convite e preserva o resto", async 
     "120363000000000001@g.us",
   );
   assert.equal(await matcher.canonicalGroupId("telegram", "23141"), "23141");
+});
+
+// ---------------------------------------------------------------------------
+// Vinculo pelo LINK DE CONVITE (painel)
+//
+// O operador cola o link — o usuario final nao sabe o JID interno. O convite e
+// resolvido na hora e o vinculo passa a valer pelo ID real do grupo.
+// ---------------------------------------------------------------------------
+
+/** Resolver com cache negativo real: a 1a tentativa falha, a 2a so passa com force. */
+function flakyResolver(code: string, jid: string) {
+  const calls = { total: 0 };
+  let available = false;
+  const cache = new Map<string, string | null>();
+  const resolver = {
+    enabled: () => true,
+    cachedJid: (c: string) => cache.get(c) ?? null,
+    jidForInviteCode: async (c: string, force = false) => {
+      if (force) cache.delete(c);
+      if (cache.has(c)) return cache.get(c) ?? null;
+      calls.total += 1;
+      const result = c === code && available ? jid : null;
+      cache.set(c, result);
+      return result;
+    },
+  } as unknown as GroupResolver;
+  return { resolver, calls, enable: () => { available = true; } };
+}
+
+test("canonicalGroupId(force) ignora o cache de falha — novo clique em Vincular tenta de novo", async () => {
+  const { resolver, calls, enable } = flakyResolver("LATERxxxxxxxxxxxxxxxxx", "120363555@g.us");
+  const matcher = new GroupMatcher(resolver);
+  const link = "https://chat.whatsapp.com/LATERxxxxxxxxxxxxxxxxx";
+
+  // 1a tentativa: instancia ainda fora do grupo.
+  assert.equal(await matcher.canonicalGroupId("whatsapp", link, true), link);
+  // Sem force, o cache negativo responderia sozinho (sem chamar a Evolution).
+  enable();
+  assert.equal(await matcher.canonicalGroupId("whatsapp", link), link, "cache negativo em vigor");
+  assert.equal(calls.total, 1, "a 2a chamada nem foi ate a Evolution");
+  // Com force (o que o painel faz), a resolucao acontece de verdade.
+  assert.equal(await matcher.canonicalGroupId("whatsapp", link, true), "120363555@g.us");
+  assert.equal(calls.total, 2);
+});
+
+test("vínculo por convite: grava o JID como forma canônica e guarda o link", () => {
+  const dir = mkdtempSync(join(tmpdir(), "cotamutual-invite-"));
+  const store = new MerchantStore(dir);
+  const link = "https://chat.whatsapp.com/C34dh5vXFPJ8wgOGlE9LYG";
+
+  const binding = store.bindGroup("whatsapp", "120363429012757266@g.us", "org_A", "Grupo", link);
+  assert.equal(binding.groupId, "120363429012757266@g.us");
+  assert.equal(binding.invite, link);
+  assert.equal(store.bindings().length, 1);
+
+  // Desvincular digitando o LINK remove o vinculo gravado pelo JID.
+  assert.equal(store.unbindGroup("whatsapp", link), true);
+  assert.equal(store.bindings().length, 0);
+});
+
+test("vínculo por convite: ao resolver depois, substitui o registro feito pelo link (sem duplicar)", () => {
+  const dir = mkdtempSync(join(tmpdir(), "cotamutual-invite2-"));
+  const store = new MerchantStore(dir);
+  const link = "https://chat.whatsapp.com/LATERxxxxxxxxxxxxxxxxx";
+
+  // 1o vinculo: convite nao resolveu, gravado pelo proprio link.
+  store.bindGroup("whatsapp", link, "org_A", "Grupo", link);
+  assert.equal(store.bindings()[0].groupId, link);
+
+  // 2o vinculo: convite resolvido -> grava pelo JID e limpa o registro antigo.
+  store.bindGroup("whatsapp", "120363555@g.us", "org_A", "Grupo", link);
+  assert.equal(store.bindings().length, 1, "não duplica o mesmo grupo");
+  assert.equal(store.bindings()[0].groupId, "120363555@g.us");
+});
+
+test("desvincular pelo JID também funciona quando o vínculo veio de um link", () => {
+  const dir = mkdtempSync(join(tmpdir(), "cotamutual-invite3-"));
+  const store = new MerchantStore(dir);
+  store.bindGroup("whatsapp", "120363555@g.us", "org_A", "Grupo", "https://chat.whatsapp.com/ABCdefGHIjklMNOpqrSTU");
+
+  assert.equal(store.unbindGroup("whatsapp", "120363555@g.us"), true);
+  assert.equal(store.bindings().length, 0);
+  assert.equal(store.unbindGroup("whatsapp", "120363555@g.us"), false, "remover duas vezes não quebra");
 });

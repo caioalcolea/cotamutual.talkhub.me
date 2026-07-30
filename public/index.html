@@ -132,12 +132,12 @@
     <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap">
       <b style="font-size:12.5px">Vincular grupo a um merchant:</b>
       <select id="bindChannel"><option>whatsapp</option><option>telegram</option></select>
-      <input id="bindGroupId" placeholder="ID do grupo (120363...@g.us)" style="min-width:260px">
+      <input id="bindGroupId" placeholder="link do convite (https://chat.whatsapp.com/…)" style="min-width:300px">
       <select id="bindMerchant" style="min-width:260px"><option value="">carregando merchants…</option></select>
       <button onclick="bindGroup()">Vincular</button>
       <button onclick="bindGroup(true)" style="background:#f1f2f5;color:#6a7282">Desvincular</button>
     </div>
-    <span class="hint" style="margin-top:6px">Use quando a listagem da Mutual estiver indisponível ou o grupo ainda não estiver cadastrado no cliente. O vínculo fica salvo no volume, sobrevive a redeploys e vale por cima de qualquer fonte — quando o cadastro oficial voltar a trazer o mesmo grupo, ele apenas deixa de ter efeito (sem duplicar). Para remover, deixe o merchant vazio e clique em Desvincular.</span>
+    <span class="hint" style="margin-top:6px">Cole o <b>link de convite</b> do grupo (o JID interno também é aceito) — ele é resolvido na hora pela Evolution e o vínculo passa a valer pelo ID real do grupo. A instância precisa estar dentro do grupo para o link resolver. Use quando a listagem da Mutual estiver indisponível ou o grupo ainda não estiver cadastrado no cliente. O vínculo fica salvo no volume, sobrevive a redeploys e vale por cima de qualquer fonte. Para remover, deixe o merchant vazio e clique em Desvincular (link ou JID, tanto faz).</span>
   </div>
   <div id="bindMsg"></div>
   <div id="groups"></div>
@@ -224,9 +224,9 @@ function renderOverview(data) {
   } else {
     $("groups").innerHTML = `<table><tr><th>Grupo</th><th>Canal</th><th>Merchant</th><th>Vínculo</th><th>Cotações</th><th>Compra (execução)</th></tr>` +
       data.groups.map((g) => `<tr>
-        <td><b>${esc(g.name || g.groupId)}</b><span class="hint mono">${esc(g.groupId)}</span>${g.registeredAs ? `<span class="hint mono">cadastro: ${esc(g.registeredAs)}</span>` : ""}</td>
+        <td><b>${esc(g.name || g.groupId)}</b><span class="hint mono">${esc(g.groupId)}</span>${g.registeredAs ? `<span class="hint mono">cadastro: ${esc(g.registeredAs)}</span>` : ""}${g.invite ? `<span class="hint mono">convite: ${esc(g.invite)}</span>` : ""}</td>
         <td>${esc(g.channel)}</td>
-        <td>${g.merchantName ? esc(g.merchantName) + `<span class="hint mono">${esc(g.merchantId)}</span>` : `<button style="padding:4px 10px;font-size:11.5px;background:#f1f2f5;color:#1a2447" onclick='fillBind(${JSON.stringify(g.channel)},${JSON.stringify(g.groupId)})'>vincular</button>`}</td>
+        <td>${g.merchantName ? esc(g.merchantName) + (g.manual ? ' <span class="tag warn">manual</span>' : "") + `<span class="hint mono">${esc(g.merchantId)}</span>` : `<button style="padding:4px 10px;font-size:11.5px;background:#f1f2f5;color:#1a2447" onclick='fillBind(${JSON.stringify(g.channel)},${JSON.stringify(g.groupId)})'>vincular</button>`}</td>
         <td>${g.linkActive === null ? '<span class="tag off">sem merchant</span>' : g.linkActive ? '<span class="tag ok">ativo</span>' : '<span class="tag danger">inativo</span>'}</td>
         <td>${toggleHtml("group", g.channel, g.groupId, "quotes", g.quotesEnabled)} <span class="hint">${g.quotesSource === "group" ? "definido no grupo" : g.quotesSource === "channel" ? "herdado do canal" : "padrão"}</span></td>
         <td>${toggleHtml("group", g.channel, g.groupId, "buy", g.buyEnabled)} <span class="hint">${g.buySource === "group" ? "definido no grupo" : g.buySource === "channel" ? "herdado do canal" : "padrão: desligado"}</span></td>
@@ -319,17 +319,28 @@ async function bindGroup(remove) {
   const channel = $("bindChannel").value;
   const groupId = $("bindGroupId").value.trim();
   const merchantId = remove ? "" : $("bindMerchant").value;
-  if (!groupId) { $("bindMsg").innerHTML = '<div class="empty" style="color:#d64550">Informe o ID do grupo.</div>'; return; }
+  if (!groupId) { $("bindMsg").innerHTML = '<div class="empty" style="color:#d64550">Cole o link de convite do grupo.</div>'; return; }
   if (!remove && !merchantId) { $("bindMsg").innerHTML = '<div class="empty" style="color:#d64550">Selecione o merchant.</div>'; return; }
+  $("bindMsg").innerHTML = `<div class="empty">${remove ? "removendo vínculo" : "resolvendo o convite na Evolution"}…</div>`;
   try {
-    await api("/bind-group", { method: "POST", body: JSON.stringify({ channel, groupId, merchantId }) });
-    $("bindMsg").innerHTML = `<div class="empty" style="color:#17864b;border-color:#bfe6cf">${remove ? "Vínculo removido" : "Grupo vinculado"} com sucesso.</div>`;
+    const r = await api("/bind-group", { method: "POST", body: JSON.stringify({ channel, groupId, merchantId }) });
+    if (remove) {
+      $("bindMsg").innerHTML = r.unbound
+        ? '<div class="empty" style="color:#17864b;border-color:#bfe6cf">Vínculo removido com sucesso.</div>'
+        : '<div class="empty">Nenhum vínculo manual encontrado para este grupo.</div>';
+    } else if (r.warning) {
+      // Convite nao resolvido agora: o vinculo vale assim que a Evolution responder.
+      $("bindMsg").innerHTML = `<div class="empty" style="color:#a06a00;border-color:#f0dcae">Grupo vinculado pelo link. ${esc(r.warning)}</div>`;
+    } else {
+      const jid = r.resolvedJid ? ` → <span class="mono">${esc(r.resolvedJid)}</span>` : "";
+      $("bindMsg").innerHTML = `<div class="empty" style="color:#17864b;border-color:#bfe6cf">Grupo vinculado com sucesso${jid}.</div>`;
+    }
     $("bindGroupId").value = "";
     refresh();
     refreshMerchants(true);
-    setTimeout(() => { $("bindMsg").innerHTML = ""; }, 4000);
+    setTimeout(() => { $("bindMsg").innerHTML = ""; }, 8000);
   } catch (e) {
-    $("bindMsg").innerHTML = `<div class="empty" style="color:#d64550">Falha ao vincular: ${esc(e.message)}</div>`;
+    $("bindMsg").innerHTML = `<div class="empty" style="color:#d64550">Falha ao ${remove ? "desvincular" : "vincular"}: ${esc(e.message)}</div>`;
   }
 }
 
